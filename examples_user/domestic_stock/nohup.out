@@ -1,0 +1,4 @@
+Traceback (most recent call last):
+  File "/home/boyeon/workspace/open-trading-api/examples_user/domestic_stock/bot.py", line 23, in <module>
+    raise ValueError("TELEGRAM_BOT_TOKEN 환경 변수를 설정해주세요!")
+ValueError: TELEGRAM_BOT_TOKEN 환경 변수를 설정해주세요!

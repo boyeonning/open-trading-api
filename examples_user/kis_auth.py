@@ -32,7 +32,9 @@ from Crypto.Util.Padding import unpad
 clearConsole = lambda: os.system("cls" if os.name in ("nt", "dos") else "clear")
 
 key_bytes = 32
-config_root = os.path.join(os.path.expanduser("~"), "KIS", "config")
+# 프로젝트 루트 경로를 자동으로 찾기 (kis_devlp.yaml이 있는 위치)
+config_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# config_root = os.path.join(os.path.expanduser("~"), "KIS", "config")  # 또는 홈 디렉토리 사용
 # config_root = "$HOME/KIS/config/"  # 토큰 파일이 저장될 폴더, 제3자가 찾기 어렵도록 경로 설정하시기 바랍니다.
 # token_tmp = config_root + 'KIS000000'  # 토큰 로컬저장시 파일 이름 지정, 파일이름을 토큰값이 유추가능한 파일명은 삼가바랍니다.
 # token_tmp = config_root + 'KIS' + datetime.today().strftime("%Y%m%d%H%M%S")  # 토큰 로컬저장시 파일명 년월일시분초
