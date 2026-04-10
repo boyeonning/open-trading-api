@@ -129,7 +129,8 @@ def analyze_stock(stock_input: str) -> dict:
         분석 결과 딕셔너리
     """
     # 종목 코드 확인
-    if stock_input.isdigit():
+    # 6자리 형식(숫자 또는 숫자+알파벳)이면 종목코드로 처리
+    if len(stock_input) == 6 and (stock_input.isdigit() or stock_input.isalnum()):
         stock_code = stock_input
         stock_name = None
         search_results = []
@@ -195,9 +196,10 @@ def analyze_stock(stock_input: str) -> dict:
                     'volume_rank': 100 - int(combined_df['acml_vol'].rank(pct=True).loc[idx] * 100)
                 })
 
-            # 10% 이내에서 거래량 Top 3
-            upper_10pct = upper_high_vol[
-                (upper_high_vol['stck_clpr'] - latest_price) / latest_price * 100 <= 10
+            # 10% 이내에서 거래량 Top 3 (전체 데이터에서 찾기)
+            upper_10pct = combined_df[
+                (combined_df['price_direction'] > 0) &
+                ((combined_df['stck_clpr'] - latest_price) / latest_price * 100 <= 10)
             ].copy()
 
             nearby_top3 = []
@@ -237,9 +239,10 @@ def analyze_stock(stock_input: str) -> dict:
                     'volume_rank': 100 - int(combined_df['acml_vol'].rank(pct=True).loc[idx] * 100)
                 })
 
-            # 10% 이내에서 거래량 Top 3
-            lower_10pct = lower_high_vol[
-                (latest_price - lower_high_vol['stck_clpr']) / latest_price * 100 <= 10
+            # 10% 이내에서 거래량 Top 3 (전체 데이터에서 찾기)
+            lower_10pct = combined_df[
+                (combined_df['price_direction'] < 0) &
+                ((latest_price - combined_df['stck_clpr']) / latest_price * 100 <= 10)
             ].copy()
 
             nearby_top3 = []
@@ -265,31 +268,35 @@ def analyze_stock(stock_input: str) -> dict:
     latest_ma = combined_df.iloc[-1][['MA_5', 'MA_10', 'MA_20', 'MA_60', 'MA_120']].dropna().astype(float)
     ma_diff = latest_price - latest_ma
 
-    # 지지선: 현재가보다 아래에 있는 MA 중 가장 가까운 것
-    ma_diff_lower = ma_diff[ma_diff >= 0]
-    if not ma_diff_lower.empty:
-        closest_ma_name = ma_diff_lower.idxmin()
-        closest_ma_value = latest_ma[closest_ma_name]
-
-        result['ma_analysis']['support_ma'] = {
-            'name': closest_ma_name,
-            'value': closest_ma_value,
-            'diff': latest_price - closest_ma_value,
-            'diff_pct': (latest_price - closest_ma_value) / closest_ma_value * 100
-        }
-
-    # 저항선: 현재가보다 위에 있는 MA 중 가장 가까운 것
+    # 저항선: 현재가보다 위에 있는 모든 MA (ma_diff < 0)
     ma_diff_upper = ma_diff[ma_diff < 0]
     if not ma_diff_upper.empty:
-        closest_ma_name = ma_diff_upper.idxmax()
-        closest_ma_value = latest_ma[closest_ma_name]
+        resistance_list = []
+        # 가까운 순으로 정렬
+        for ma_name in ma_diff_upper.abs().sort_values().index:
+            ma_value = latest_ma[ma_name]
+            resistance_list.append({
+                'name': ma_name,
+                'value': ma_value,
+                'diff': latest_price - ma_value,
+                'diff_pct': (latest_price - ma_value) / ma_value * 100
+            })
+        result['ma_analysis']['resistance_ma'] = resistance_list
 
-        result['ma_analysis']['resistance_ma'] = {
-            'name': closest_ma_name,
-            'value': closest_ma_value,
-            'diff': latest_price - closest_ma_value,
-            'diff_pct': (latest_price - closest_ma_value) / closest_ma_value * 100
-        }
+    # 지지선: 현재가보다 아래에 있는 모든 MA (ma_diff > 0)
+    ma_diff_lower = ma_diff[ma_diff > 0]
+    if not ma_diff_lower.empty:
+        support_list = []
+        # 가까운 순으로 정렬
+        for ma_name in ma_diff_lower.sort_values().index:
+            ma_value = latest_ma[ma_name]
+            support_list.append({
+                'name': ma_name,
+                'value': ma_value,
+                'diff': latest_price - ma_value,
+                'diff_pct': (latest_price - ma_value) / ma_value * 100
+            })
+        result['ma_analysis']['support_ma'] = support_list
 
     # 모든 이동평균선
     result['ma_analysis']['all'] = {}

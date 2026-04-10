@@ -113,11 +113,11 @@ trenv = ka.getTREnv()
 # # [해외주식] 주문/계좌 > 해외주식 체결기준현재잔고 [v1_해외주식-008]
 # ##############################################################################################
 
-# df1, df2, df3 = inquire_present_balance(cano=trenv.my_acct, acnt_prdt_cd=trenv.my_prod, wcrc_frcr_dvsn_cd="02",
-#                                         natn_cd="000", tr_mket_cd="00", inqr_dvsn_cd="00", env_dv="real")
-# print(df1)
-# print(df2)
-# print(df3)
+df1, df2, df3 = inquire_present_balance(cano=trenv.my_acct, acnt_prdt_cd=trenv.my_prod, wcrc_frcr_dvsn_cd="02",
+                                        natn_cd="000", tr_mket_cd="00", inqr_dvsn_cd="00", env_dv="real")
+print(df1)
+print(df2)
+print(df3)
 
 # ##############################################################################################
 # # [해외주식] 주문/계좌 > 해외주식 매수가능금액조회 [v1_해외주식-014]
@@ -281,9 +281,9 @@ trenv = ka.getTREnv()
 # # [해외주식] 기본시세 > 해외주식 기간별시세[v1_해외주식-010]
 # ##############################################################################################
 
-df1, df2 = dailyprice(auth="", excd="NAS", symb="TSLA", gubn="0", bymd="", modp="1", env_dv="real")
-print(df1)
-print(df2)
+# df1, df2 = dailyprice(auth="", excd="AMS", symb="UPRO", gubn="0", bymd="", modp="1", env_dv="real")
+# print(df1)
+# print(df2)
 
 # ##############################################################################################
 # # [해외주식] 기본시세 > 해외주식 업종별코드조회[해외주식-049]

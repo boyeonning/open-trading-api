@@ -1,0 +1,15 @@
+[Unit]
+Description=Stock Analysis Telegram Bot
+After=network.target
+
+[Service]
+Type=simple
+User=boyeon
+WorkingDirectory=/home/boyeon/workspace/open-trading-api/examples_user/domestic_stock
+Environment="TELEGRAM_BOT_TOKEN=your_telegram_bot_token_here"
+ExecStart=/home/boyeon/workspace/open-trading-api/.venv/bin/python3 bot.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

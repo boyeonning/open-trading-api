@@ -158,21 +158,27 @@ def format_analysis_message(result: dict, is_overseas: bool = False, is_etf: boo
         msg += f"━━━━━━━━━━━━━━━━━━━\n"
         msg += f"📊 <b>이동평균선</b>\n"
 
-        # 저항선 MA (현재가 위)
+        # 저항선 MA (현재가 위) - 모든 저항선
         if 'resistance_ma' in ma_analysis:
-            ma = ma_analysis['resistance_ma']
-            if is_overseas:
-                msg += f"🔴 저항: {ma['name']} ${ma['value']:,.2f} ({ma['diff_pct']:.1f}%)\n"
-            else:
-                msg += f"🔴 저항: {ma['name']} {ma['value']:,.0f}원 ({ma['diff_pct']:.1f}%)\n"
+            resistance_list = ma_analysis['resistance_ma']
+            if isinstance(resistance_list, list):
+                msg += f"🔴 <b>저항선</b>\n"
+                for ma in resistance_list:
+                    if is_overseas:
+                        msg += f"  {ma['name']}: ${ma['value']:,.2f} (+{abs(ma['diff_pct']):.1f}%)\n"
+                    else:
+                        msg += f"  {ma['name']}: {ma['value']:,.0f}원 (+{abs(ma['diff_pct']):.1f}%)\n"
 
-        # 지지선 MA (현재가 아래)
+        # 지지선 MA (현재가 아래) - 모든 지지선
         if 'support_ma' in ma_analysis:
-            ma = ma_analysis['support_ma']
-            if is_overseas:
-                msg += f"🟢 지지: {ma['name']} ${ma['value']:,.2f} (+{ma['diff_pct']:.1f}%)\n"
-            else:
-                msg += f"🟢 지지: {ma['name']} {ma['value']:,.0f}원 (+{ma['diff_pct']:.1f}%)\n"
+            support_list = ma_analysis['support_ma']
+            if isinstance(support_list, list):
+                msg += f"🟢 <b>지지선</b>\n"
+                for ma in support_list:
+                    if is_overseas:
+                        msg += f"  {ma['name']}: ${ma['value']:,.2f} (-{ma['diff_pct']:.1f}%)\n"
+                    else:
+                        msg += f"  {ma['name']}: {ma['value']:,.0f}원 (-{ma['diff_pct']:.1f}%)\n"
 
     return msg
 
