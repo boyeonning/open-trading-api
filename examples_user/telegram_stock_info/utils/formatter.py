@@ -2,6 +2,14 @@
 from typing import Dict, List, Optional
 
 
+def _format_date(date_str: str) -> str:
+    """날짜 문자열을 YYYY-MM-DD 형식으로 변환"""
+    d = str(date_str).replace("-", "").replace("/", "").strip()
+    if len(d) == 8:
+        return f"{d[:4]}-{d[4:6]}-{d[6:]}"
+    return date_str
+
+
 def format_header(result: dict, is_overseas: bool = False, is_etf: bool = False) -> str:
     """메시지 헤더 포맷팅"""
     if is_etf:
@@ -18,7 +26,7 @@ def format_header(result: dict, is_overseas: bool = False, is_etf: bool = False)
         icon = "📊"
     
     header = f"{icon} <b>{name}</b>\n"
-    header += f"💰 <b>{price}</b> ({result['latest_date']})\n"
+    header += f"💰 <b>{price}</b> ({_format_date(result['latest_date'])})\n"
     header += f"━━━━━━━━━━━━━━━━━━━\n\n"
     
     # 여러 검색 결과가 있는 경우 표시
@@ -49,7 +57,7 @@ def format_volume_section(volume_data: List[Dict], title: str, is_overseas: bool
                 price_str = f"{item['price']:,.0f}원 ({diff_pct:.1f}%)"
         
         section += f"<b>[{i}위]</b> {price_str}\n"
-        section += f"     {item['date']} / 거래량 {item['volume']:,} (상위 {item['volume_rank']:.0f}%)\n"
+        section += f"     {_format_date(item['date'])} / 거래량 {item['volume']:,} (상위 {item['volume_rank']:.0f}%)\n"
     
     return section + "\n"
 
