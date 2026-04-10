@@ -154,8 +154,10 @@ yarn-error.log*
 
 # ===== KIS (민감 정보) =====
 KIS/
+KIS2*
 .master/
 .kis_token*.json
+kis_devlp.yaml
 
 # ===== Lean workspace =====
 .lean-workspace/
@@ -163,14 +165,6 @@ KIS/
 # ===== Claude Code =====
 .claude/logs/*.log
 .claude/settings.local.json
-
-# ===== p2 output artifacts (regeneratable) =====
-backtester/examples/output/reports/*.html
-backtester/examples/output/screenshots/
-backtester/examples/output/*.yaml
-backtester/examples/output/*.py
-!backtester/examples/output/.gitkeep
-!backtester/examples/output/reports/.gitkeep
 
 # ===== Claude settings =====
 settings.local.json

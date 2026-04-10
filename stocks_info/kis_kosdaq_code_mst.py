@@ -15,7 +15,7 @@ def kosdaq_master_download(base_dir, verbose=False):
     ssl._create_default_https_context = ssl._create_unverified_context
     
     urllib.request.urlretrieve("https://new.real.download.dws.co.kr/common/master/kosdaq_code.mst.zip",
-                               base_dir + "\\kosdaq_code.zip")
+                               os.path.join(base_dir, "kosdaq_code.zip"))
 
     os.chdir(base_dir)
     if (verbose): print(f"change directory to {base_dir}")
@@ -28,12 +28,12 @@ def kosdaq_master_download(base_dir, verbose=False):
         os.remove("kosdaq_code.zip")
 
 def get_kosdaq_master_dataframe(base_dir):
-    file_name = base_dir + "\\kosdaq_code.mst"
-    tmp_fil1 = base_dir + "\\kosdaq_code_part1.tmp"
-    tmp_fil2 = base_dir + "\\kosdaq_code_part2.tmp"
+    file_name = os.path.join(base_dir, "kosdaq_code.mst")
+    tmp_fil1 = os.path.join(base_dir, "kosdaq_code_part1.tmp")
+    tmp_fil2 = os.path.join(base_dir, "kosdaq_code_part2.tmp")
 
-    wf1 = open(tmp_fil1, mode="w")
-    wf2 = open(tmp_fil2, mode="w")
+    wf1 = open(tmp_fil1, mode="w", encoding="utf-8")
+    wf2 = open(tmp_fil2, mode="w", encoding="utf-8")
 
     with open(file_name, mode="r", encoding="cp949") as f:
         for row in f:
@@ -49,7 +49,7 @@ def get_kosdaq_master_dataframe(base_dir):
     wf2.close()
 
     part1_columns = ['단축코드','표준코드','한글종목명']
-    df1 = pd.read_csv(tmp_fil1, header=None, names=part1_columns, encoding='cp949')
+    df1 = pd.read_csv(tmp_fil1, header=None, names=part1_columns, encoding='utf-8')
 
     field_specs = [2, 1,
                    4, 4, 4, 1, 1,
@@ -90,8 +90,9 @@ def get_kosdaq_master_dataframe(base_dir):
     # clean temporary file and dataframe
     del (df1)
     del (df2)
-    os.remove(tmp_fil1)
-    os.remove(tmp_fil2)
+    # Keep tmp files for bot usage
+    # os.remove(tmp_fil1)
+    # os.remove(tmp_fil2)
 
     print("Done")
 
@@ -100,5 +101,6 @@ def get_kosdaq_master_dataframe(base_dir):
 kosdaq_master_download(base_dir)
 df = get_kosdaq_master_dataframe(base_dir)
 
-df.to_excel('kosdaq_code.xlsx',index=False)  # 현재 위치에 엑셀파일로 저장
+# df.to_excel('kosdaq_code.xlsx',index=False)  # 현재 위치에 엑셀파일로 저장 (requires openpyxl)
+print(f"Generated {len(df)} KOSDAQ stocks")
 df
