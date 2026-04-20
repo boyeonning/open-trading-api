@@ -302,7 +302,7 @@ def fetch_today_minute_candles(stock_code: str, env_dv: str) -> pd.DataFrame:
 
 
 def analyze_intraday_volume_sr(stock_code: str, stock_name: str, env_dv: str = "real") -> dict:
-    """1분봉 거래량 기반 당일 지지/저항 분석"""
+    """1분봉 Volume Profile 기반 당일 지지/저항 분석"""
     from api.domestic_stock_functions import inquire_price
 
     price_df = inquire_price(env_dv=env_dv, fid_cond_mrkt_div_code="J", fid_input_iscd=stock_code)
@@ -320,28 +320,24 @@ def analyze_intraday_volume_sr(stock_code: str, stock_name: str, env_dv: str = "
     df['stck_prpr'] = pd.to_numeric(df['stck_prpr'], errors='coerce')
     df = df.dropna(subset=['stck_prpr'])
 
-    above = df[df['stck_prpr'] > current_price]
-    below = df[df['stck_prpr'] < current_price]
+    # 동일 가격의 거래량 합산 (Volume Profile, 단일 가격 기준)
+    profile = df.groupby('stck_prpr')['cntg_vol'].sum().reset_index()
+    profile.columns = ['price', 'volume']
 
-    resistance = None
-    if not above.empty:
-        row = above.loc[above['cntg_vol'].idxmax()]
-        resistance = {
-            'price': int(row['stck_prpr']),
-            'volume': int(row['cntg_vol']),
-            'time': row['stck_cntg_hour'],
-            'diff_pct': (float(row['stck_prpr']) - current_price) / current_price * 100
-        }
+    # 현재가 기준 상방/하방 분리 후 거래량 Top 3
+    def build_levels(price_df):
+        levels = []
+        for _, row in price_df.sort_values('volume', ascending=False).head(3).iterrows():
+            price = int(row['price'])
+            levels.append({
+                'price': price,
+                'volume': int(row['volume']),
+                'diff_pct': (price - current_price) / current_price * 100
+            })
+        return levels
 
-    support = None
-    if not below.empty:
-        row = below.loc[below['cntg_vol'].idxmax()]
-        support = {
-            'price': int(row['stck_prpr']),
-            'volume': int(row['cntg_vol']),
-            'time': row['stck_cntg_hour'],
-            'diff_pct': (float(row['stck_prpr']) - current_price) / current_price * 100
-        }
+    resistance = build_levels(profile[profile['price'] > current_price])
+    support = build_levels(profile[profile['price'] < current_price])
 
     return {
         'stock_code': stock_code,
@@ -349,7 +345,90 @@ def analyze_intraday_volume_sr(stock_code: str, stock_name: str, env_dv: str = "
         'current_price': current_price,
         'resistance': resistance,
         'support': support,
-        'total_candles': len(df)
+        'total_candles': len(df),
+    }
+
+
+def calculate_candle_sr_levels(
+    df: pd.DataFrame,
+    latest_price: float,
+    open_col: str,
+    close_col: str,
+    volume_col: str,
+    date_col: str,
+    nearby_range: float = 20.0,
+    top_n: int = 3
+) -> Dict:
+    """캔들 방향 기반 지지선/저항선 탐색
+
+    지지선: 현재가 아래에 위치한 음봉(close < open) 중 거래량 상위 top_n개의 종가
+    저항선: 현재가 위에 위치한 양봉(close > open) 중 거래량 상위 top_n개의 종가
+
+    두 가지 탐색 범위를 모두 반환:
+    - 전체 범위: 전체 캔들 데이터
+    - 근접 범위: 현재가 기준 ±nearby_range% 이내
+
+    Returns:
+        {
+            'full_range':   {'support': [...], 'resistance': [...]},
+            'nearby_range': {'support': [...], 'resistance': [...]}
+        }
+        각 항목: {'close': float, 'volume': int, 'date': str, 'diff_pct': float}
+    """
+    if df.empty:
+        return {}
+
+    df = df.copy()
+    for col in [open_col, close_col, volume_col]:
+        df[col] = pd.to_numeric(df[col], errors='coerce')
+    df = df.dropna(subset=[open_col, close_col, volume_col])
+
+    if df.empty:
+        return {}
+
+    # 전체 데이터 기준 거래량 백분위 순위 (높을수록 상위)
+    vol_pct_rank = df[volume_col].rank(pct=True)
+
+    def extract_levels(candles: pd.DataFrame) -> List[Dict]:
+        if candles.empty:
+            return []
+        top = candles.nlargest(top_n, volume_col)
+        result = []
+        for idx, row in top.iterrows():
+            close = row[close_col]
+            result.append({
+                'close': close,
+                'volume': int(row[volume_col]),
+                'volume_top_pct': int((1 - vol_pct_rank.loc[idx]) * 100),  # 상위 n%
+                'date': str(row[date_col]),
+                'diff_pct': (close - latest_price) / latest_price * 100
+            })
+        return result
+
+    # 음봉(close < open) / 양봉(close > open)
+    bearish = df[df[close_col] < df[open_col]]
+    bullish = df[df[close_col] > df[open_col]]
+
+    # 지지선 후보: 음봉 중 종가가 현재가 아래
+    support_all = bearish[bearish[close_col] < latest_price]
+    # 저항선 후보: 양봉 중 종가가 현재가 위
+    resistance_all = bullish[bullish[close_col] > latest_price]
+
+    # ±nearby_range% 이내 필터
+    lower_bound = latest_price * (1 - nearby_range / 100)
+    upper_bound = latest_price * (1 + nearby_range / 100)
+    support_nearby = support_all[support_all[close_col] >= lower_bound]
+    resistance_nearby = resistance_all[resistance_all[close_col] <= upper_bound]
+
+    return {
+        'full_range': {
+            'support': extract_levels(support_all),
+            'resistance': extract_levels(resistance_all)
+        },
+        'nearby_range': {
+            'support': extract_levels(support_nearby),
+            'resistance': extract_levels(resistance_nearby)
+        }
     }
 
 

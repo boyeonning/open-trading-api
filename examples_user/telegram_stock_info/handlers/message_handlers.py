@@ -3,7 +3,7 @@ import logging
 import asyncio
 import functools
 
-from telegram import Update
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 
 import kis_auth as ka
@@ -112,7 +112,21 @@ async def analyze_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 else:
                     raise stock_error
 
-        await wait_msg.edit_text(message, parse_mode='HTML')
+        # 캔들 지지/저항 버튼 추가
+        reply_markup = None
+        if result.get('candle_sr'):
+            cache_key = f'candle_sr|{stock_input}'
+            context.user_data[cache_key] = {
+                'data': result['candle_sr'],
+                'is_overseas': is_overseas
+            }
+            keyboard = [[InlineKeyboardButton(
+                "🕯 캔들 지지/저항 보기",
+                callback_data=cache_key
+            )]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+
+        await wait_msg.edit_text(message, parse_mode='HTML', reply_markup=reply_markup)
 
     except StockAnalysisError as e:
         await wait_msg.edit_text(handle_analysis_error(e))

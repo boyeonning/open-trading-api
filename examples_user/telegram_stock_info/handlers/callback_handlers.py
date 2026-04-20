@@ -8,7 +8,7 @@ from telegram.ext import ContextTypes
 
 import kis_auth as ka
 from utils.config import EXCHANGE_NAMES
-from utils.formatter import format_analysis_message, format_analyzing_message
+from utils.formatter import format_analysis_message, format_analyzing_message, format_candle_sr_message
 from utils.exceptions import StockAnalysisError
 from handlers.state import user_history
 from handlers.message_handlers import (
@@ -128,6 +128,16 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode='HTML'
         )
+        return
+
+    # 캔들 지지/저항 버튼 클릭
+    if data.startswith("candle_sr|"):
+        cached = context.user_data.get(data)
+        if not cached:
+            await query.message.reply_text("❌ 데이터가 만료됐습니다. 종목을 다시 조회해주세요.")
+            return
+        msg = format_candle_sr_message(cached['data'], is_overseas=cached['is_overseas'])
+        await query.message.reply_text(msg, parse_mode='HTML')
         return
 
     # 검색 기록에서 종목 분석

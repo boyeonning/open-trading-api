@@ -183,10 +183,10 @@ def format_analysis_message(result: dict, is_overseas: bool = False, is_etf: boo
     if 'volume_analysis' in result:
         msg += format_volume_analysis(result['volume_analysis'], is_overseas)
     
-    # 이동평균선 분석  
+    # 이동평균선 분석
     if 'ma_analysis' in result:
         msg += format_ma_analysis(result['ma_analysis'], is_overseas)
-    
+
     return msg
 
 
@@ -237,36 +237,84 @@ def format_intraday_sr_message(result: dict) -> str:
     msg = f"📊 <b>{name}</b> ({code})\n"
     msg += f"💰 <b>현재가: {current_price:,}원</b>\n"
     msg += f"━━━━━━━━━━━━━━━━━━━\n"
-    msg += f"⏱ 오늘 1분봉 거래량 지지/저항\n\n"
+    msg += f"⏱ 오늘 1분봉 Volume Profile 지지/저항\n\n"
 
     # 저항선 (상방)
     resistance = result.get('resistance')
     if resistance:
-        time_str = resistance['time']
-        # HHMMSS → HH:MM 포맷
-        if len(time_str) >= 4:
-            time_str = f"{time_str[:2]}:{time_str[2:4]}"
-        msg += f"📈 <b>저항 (상방 최대 거래량)</b>\n"
-        msg += f"   가격: {resistance['price']:,}원 (+{resistance['diff_pct']:.2f}%)\n"
-        msg += f"   시각: {time_str}\n"
-        msg += f"   거래량: {resistance['volume']:,}\n\n"
+        msg += f"📈 <b>저항 (상방)</b>\n"
+        for i, level in enumerate(resistance, 1):
+            diff_pct = level['diff_pct']
+            msg += f"  <b>[{i}]</b> {level['price']:,}원 (+{diff_pct:.1f}%)\n"
+            msg += f"        누적거래량 {level['volume']:,}\n"
+        msg += "\n"
     else:
         msg += f"📈 <b>저항</b>: 데이터 없음\n\n"
 
     # 지지선 (하방)
     support = result.get('support')
     if support:
-        time_str = support['time']
-        if len(time_str) >= 4:
-            time_str = f"{time_str[:2]}:{time_str[2:4]}"
-        msg += f"📉 <b>지지 (하방 최대 거래량)</b>\n"
-        msg += f"   가격: {support['price']:,}원 ({support['diff_pct']:.2f}%)\n"
-        msg += f"   시각: {time_str}\n"
-        msg += f"   거래량: {support['volume']:,}\n\n"
+        msg += f"📉 <b>지지 (하방)</b>\n"
+        for i, level in enumerate(support, 1):
+            diff_pct = level['diff_pct']
+            msg += f"  <b>[{i}]</b> {level['price']:,}원 ({diff_pct:.1f}%)\n"
+            msg += f"        누적거래량 {level['volume']:,}\n"
+        msg += "\n"
     else:
         msg += f"📉 <b>지지</b>: 데이터 없음\n\n"
 
     msg += f"<i>기준: 당일 {total_candles}개 1분봉</i>"
+    return msg
+
+
+def format_candle_sr_message(candle_sr: Dict, is_overseas: bool = False) -> str:
+    """캔들 방향 기반 지지선/저항선 분석 포맷팅
+
+    Args:
+        candle_sr: calculate_candle_sr_levels() 반환값
+        is_overseas: 해외주식 여부 (가격 단위 결정)
+
+    Returns:
+        포맷팅된 텔레그램 HTML 메시지
+    """
+    if not candle_sr:
+        return ""
+
+    def price_str(close: float) -> str:
+        if is_overseas:
+            return f"${close:,.2f}"
+        return f"{close:,.0f}원"
+
+    def format_levels(levels: List[Dict], label: str, emoji: str) -> str:
+        if not levels:
+            return f"{emoji} <b>{label}</b>: 해당 없음\n"
+        msg = f"{emoji} <b>{label}</b>\n"
+        for i, lv in enumerate(levels, 1):
+            diff = lv['diff_pct']
+            sign = "+" if diff >= 0 else ""
+            msg += (
+                f"  <b>[{i}순위]</b> {price_str(lv['close'])} "
+                f"({sign}{diff:.1f}%)\n"
+                f"          거래량: {lv['volume']:,} (상위 {lv['volume_top_pct']}%) / {_format_date(lv['date'])}\n"
+            )
+        return msg
+
+    msg = "━━━━━━━━━━━━━━━━━━━\n"
+    msg += "🕯 <b>캔들 방향 지지/저항</b>\n\n"
+
+    range_labels = [
+        ('full_range', '전체 범위'),
+        ('nearby_range', '±20% 근접 범위'),
+    ]
+    for range_key, range_label in range_labels:
+        data = candle_sr.get(range_key)
+        if not data:
+            continue
+        msg += f"📌 <b>[{range_label}]</b>\n"
+        msg += format_levels(data.get('support', []), '지지선 (음봉↓)', '🔵')
+        msg += format_levels(data.get('resistance', []), '저항선 (양봉↑)', '🔴')
+        msg += "\n"
+
     return msg
 
 

@@ -13,7 +13,7 @@ from utils.exceptions import DataFetchError, APIError
 from utils.analysis_utils import (
     validate_price_data, calculate_moving_averages,
     calculate_volume_analysis, calculate_ma_analysis,
-    validate_analysis_data, performance_monitor
+    calculate_candle_sr_levels, validate_analysis_data, performance_monitor
 )
 from analyzers.base import fetch_paginated_daily_data
 
@@ -96,5 +96,10 @@ def analyze_stock(excd: str, symb: str) -> dict:
         ),
         'ma_analysis': calculate_ma_analysis(
             combined_df, latest_price, ma_periods, return_all=True
+        ),
+        'candle_sr': calculate_candle_sr_levels(
+            combined_df, latest_price,
+            open_col='open', close_col='clos',
+            volume_col='tvol', date_col='xymd'
         )
     }
