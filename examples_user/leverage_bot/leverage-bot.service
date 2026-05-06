@@ -1,0 +1,17 @@
+[Unit]
+Description=Leverage ETF Calculator Telegram Bot
+After=network.target
+
+[Service]
+Type=simple
+User=boyeon
+WorkingDirectory=/home/boyeon/workspace/open-trading-api/examples_user/leverage_bot
+Environment="LEVERAGE_BOT_TOKEN=your_token_here"
+ExecStart=/home/boyeon/.local/bin/uv run bot.py
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
