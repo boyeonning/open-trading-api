@@ -94,15 +94,35 @@ FORBIDDEN_COMBOS: dict[str, list[str]] = {
 }
 
 SPECIAL_WARNINGS: dict[str, str] = {
+    # 완충재 관계 (3배 부담 시 대체)
+    'SSO':  'UPRO(S&P500 3배)의 완충재 — UPRO가 부담스러우면 SSO',
+    'QLD':  'TQQQ(나스닥 3배)의 완충재 — TQQQ가 부담스러우면 QLD',
+    'USD':  'SOXL(반도체 3배)의 완충재 — SOXL이 부담스러우면 USD',
+    'UWM':  'TNA(Russell 3배)의 완충재 — TNA가 부담스러우면 UWM',
+    # 고위험·고변동
     'BOIL': '최고위험 — 천연가스 2배, 롤오버 비용 극심',
-    'SMCX': '고변동 별도 분류 — 진입 신중',
+    'SMCX': '고변동 별도 분류 — AI칩 EMS, 진입 신중',
     'YCL':  'BOJ·일본 CPI·엔캐리 청산 이벤트 주의',
-    'BITX': '크립토 레버리지 — 주말 포함 24시간 변동, 갭 리스크 큼',
-    'ETHU': '크립토 레버리지 — 주말 포함 24시간 변동',
-    'XXRP': '크립토 레버리지 — 주말 포함 24시간 변동',
-    'SOLT': '크립토 레버리지 — 주말 포함 24시간 변동',
-    'MSTX': 'BTC 고베타 — 비트코인 방향성에 극도로 민감',
-    'CONL': '크립토 고베타 — 규제 리스크 포함',
+    # 크립토 — 선택 기준 포함
+    'BITX': '크립토 BTC 2배 — 주말 포함 24시간 변동·갭 리스크 큼 (BITX/BITU/BTCL 중 BITX 선택)',
+    'ETHU': '크립토 ETH 2배 — 24시간 변동 (ETHU/ETHT 중 ETHU 선택)',
+    'XXRP': '크립토 XRP 2배 — 24시간 변동 (XXRP/UXRP/XRPK 중 XXRP 선택)',
+    'SOLT': '크립토 SOL 2배 — 24시간 변동 (SOLT/SOLX 중 SOLT 선택)',
+    'MSTX': 'BTC 고베타 — 비트코인 방향성에 극도로 민감 (MSTX/MSTU 중 MSTX 선택)',
+    'CONL': '크립토 고베타 — 규제 리스크 포함 (CONL/CONX 중 CONL 선택)',
+    # 2등급 신규 편입 우선순위: AVL→ARMG→TSMX→PTIR→MRVU→VRTL→ROBN
+    'AVL':  '신규 우선순위 1위 (AVL→ARMG→TSMX→PTIR→MRVU→VRTL→ROBN) — AVGO 2배, AI·반도체 클러스터',
+    'ARMG': '신규 우선순위 2위 (AVL→ARMG→TSMX→PTIR→MRVU→VRTL→ROBN) — ARM 2배, AI·반도체 클러스터',
+    'TSMX': '신규 우선순위 3위 (AVL→ARMG→TSMX→PTIR→MRVU→VRTL→ROBN) — TSM 2배, AI·반도체 클러스터',
+    'PTIR': '신규 우선순위 4위 (AVL→ARMG→TSMX→PTIR→MRVU→VRTL→ROBN) — PLTR 2배, 메가테크 클러스터',
+    'MRVU': '신규 우선순위 5위 (AVL→ARMG→TSMX→PTIR→MRVU→VRTL→ROBN) — MRVL 2배, 소액 테스트 중',
+    'VRTL': '신규 우선순위 6위 (AVL→ARMG→TSMX→PTIR→MRVU→VRTL→ROBN) — VRT 2배, 소액 테스트 중',
+    'ROBN': '신규 우선순위 7위 (AVL→ARMG→TSMX→PTIR→MRVU→VRTL→ROBN) — HOOD 2배, 크립토 심리 민감',
+    # 기타 감시 중
+    'CSEX': '신규 편입 — CLS 2배, 감시 중',
+    'SOFA': '신규 편입 — SOFI 2배, 감시 중',
+    'BABU': '중국주 레버리지 — BABA 2배, 규제·상장폐지 리스크',
+    'OKLL': '감시 중 — 상황에 따라 3등급 하향 또는 제외 가능',
 }
 
 

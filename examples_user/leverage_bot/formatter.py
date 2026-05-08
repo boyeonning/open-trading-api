@@ -1,6 +1,12 @@
 """Telegram HTML 메시지 포맷터"""
+import math
 from typing import Optional
 from calc import GRADE_CONFIG, TICKER_GRADE, get_warnings, calculate_buy_plan, calculate_from_avg
+
+
+def _p(x: float) -> str:
+    """소수점 둘째 자리 버림 (반올림 없음)"""
+    return f'${math.floor(x * 100) / 100:,.2f}'
 
 
 def _grade_emoji(grade: str) -> str:
@@ -52,9 +58,7 @@ def format_first_entry(
     warnings = _filter_warnings(get_warnings(ticker, grade, vix, below_50ma, below_200ma))
 
     r = plan['rounds'][0]
-    buy  = f'${r["buy_price"]:,.2f}'
-    tgt  = f'${r["target_price"]:,.2f}'
-    stp  = f'${r["stop_price"]:,.2f}'
+    buy = _p(r["buy_price"])
 
     lines = [
         f'{_grade_emoji(grade)} <b>{ticker}</b>  {cfg["name"]}',
@@ -63,8 +67,6 @@ def format_first_entry(
         '',
         '┌─ <b>1차 진입가</b>',
         f'│  매수가  <b>{buy}</b>',
-        f'│  목표가  {tgt}  <i>({r["target_label"]})</i>',
-        f'│  손절가  {stp}  <i>(−{cfg["stop_pct"]:.0f}%)</i>',
         f'└  투입    {r["amount"]}만원',
     ]
 
@@ -73,7 +75,7 @@ def format_first_entry(
         for w in warnings:
             lines.append(f'  {w}')
 
-    lines += ['', '<i>목표 · 시간 · 손절  →  판다</i>']
+    lines += ['']
     return '\n'.join(lines)
 
 
@@ -96,15 +98,31 @@ def format_add_buy_result(
     r = plan['round']
     star = '  ★ 권장 마지막 차수' if r['is_last_recommended'] else ''
 
-    buy  = f'${r["buy_price"]:,.2f}'
-    avg  = f'${r["avg_price"]:,.2f}'
-    tgt  = f'${r["target_price"]:,.2f}'
-    stp  = f'${r["stop_price"]:,.2f}'
+    # 현재 포지션 기준 목표가/손절가 (입력 평단 기준)
+    target_pcts = cfg['target_pcts']
+    current_round = from_round - 1
+    if current_round == 1:
+        cur_tgt_pct = target_pcts[0]
+    elif current_round <= 3:
+        cur_tgt_pct = target_pcts[1]
+    else:
+        cur_tgt_pct = target_pcts[2]
+    cur_tgt = _p(input_avg * (1 + cur_tgt_pct / 100))
+    cur_stp = _p(input_avg * (1 - cfg['stop_pct'] / 100))
+
+    buy  = _p(r["buy_price"])
+    avg  = _p(r["avg_price"])
+    tgt  = _p(r["target_price"])
+    stp  = _p(r["stop_price"])
 
     lines = [
         f'{_grade_emoji(grade)} <b>{ticker}</b>  {cfg["name"]}',
         f'<code>{close_date}  종가 ${close_price:,.2f}  평단 ${input_avg:,.2f}</code>',
         _cond_str(vix, below_50ma, below_200ma, 0),
+        '',
+        f'┌─ <b>현재 포지션</b>  ({from_round - 1}차까지)',
+        f'│  목표가  {cur_tgt}  <i>(+{cur_tgt_pct:.0f}%)</i>',
+        f'└  손절가  {cur_stp}  <i>(−{cfg["stop_pct"]:.0f}%)</i>',
         '',
         f'┌─ <b>{from_round}차 추매</b>{star}',
         f'│  매수가  <b>{buy}</b>',
@@ -119,7 +137,7 @@ def format_add_buy_result(
         for w in warnings:
             lines.append(f'  {w}')
 
-    lines += ['', '<i>목표 · 시간 · 손절  →  판다</i>']
+    lines += ['']
     return '\n'.join(lines)
 
 
@@ -154,7 +172,17 @@ def format_help_message() -> str:
         '<b>명령어</b>\n'
         '  /list    지원 종목 전체 목록\n'
         '  /vix     현재 VIX 조회\n'
-        '  /cancel  평단 입력 취소'
+        '  /scan    전 종목 MA 위치 스캔\n'
+        '  /cancel  평단 입력 취소\n\n'
+        '<b>계좌 손실 단계별 방어</b>\n'
+        '  −8%   신규 진입 중단\n'
+        '  −12%  2·3등급 일부 축소\n'
+        '  −15%  전체 시스템 일시 중단\n\n'
+        '<b>슬롯 운용 원칙</b>\n'
+        '  최대 8슬롯 (1등급 3·2등급 2·3등급 1·현금 1+)\n'
+        '  50일선↓: 1차 70만·총 600만 한도·4차까지만\n'
+        '  VIX 30+: 신규 거의 중단 (1등급 안정형 소액만)\n'
+        '  VIX 40+: 전부 중단'
     )
 
 

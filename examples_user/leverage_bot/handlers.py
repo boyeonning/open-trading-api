@@ -25,7 +25,8 @@ WAITING_AVG = 1
 # ──────────────────────────────────────────────────────────
 def _make_keyboard(ticker: str, close: float, date: str,
                    vix: Optional[float], below_50ma: bool, below_200ma: bool) -> InlineKeyboardMarkup:
-    ab_base = f"addbuy|{ticker}|{close}|{date}|{vix or ''}|{int(below_50ma)}|{int(below_200ma)}"
+    vix_s = f'{vix:.1f}' if vix else ''
+    ab_base = f"addbuy|{ticker}|{close:.2f}|{date}|{vix_s}|{int(below_50ma)}|{int(below_200ma)}"
     return InlineKeyboardMarkup([[
         InlineKeyboardButton('2차 추매', callback_data=f'{ab_base}|2'),
         InlineKeyboardButton('3차 추매', callback_data=f'{ab_base}|3'),
