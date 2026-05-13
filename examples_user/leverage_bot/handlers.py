@@ -19,14 +19,22 @@ logger = logging.getLogger(__name__)
 # ConversationHandler 상태
 WAITING_AVG = 1
 
+# 등급 입력 약어 → grade key
+_GRADE_MAP = {
+    '1': 'tier1_stable', '1s': 'tier1_stable',
+    '1v': 'tier1_volatile',
+    '2': 'tier2',
+    '3': 'tier3',
+}
+
 
 # ──────────────────────────────────────────────────────────
 #  인라인 키보드
 # ──────────────────────────────────────────────────────────
-def _make_keyboard(ticker: str, close: float, date: str,
+def _make_keyboard(ticker: str, grade: str, close: float, date: str,
                    vix: Optional[float], below_50ma: bool, below_200ma: bool) -> InlineKeyboardMarkup:
     vix_s = f'{vix:.1f}' if vix else ''
-    ab_base = f"addbuy|{ticker}|{close:.2f}|{date}|{vix_s}|{int(below_50ma)}|{int(below_200ma)}"
+    ab_base = f"addbuy|{ticker}|{grade}|{close:.2f}|{date}|{vix_s}|{int(below_50ma)}|{int(below_200ma)}"
     return InlineKeyboardMarkup([[
         InlineKeyboardButton('2차 추매', callback_data=f'{ab_base}|2'),
         InlineKeyboardButton('3차 추매', callback_data=f'{ab_base}|3'),
@@ -113,9 +121,14 @@ async def cmd_vix(update: Update, context: ContextTypes.DEFAULT_TYPE):
 #  메시지 핸들러 — 티커 입력 → 1차 진입가
 # ──────────────────────────────────────────────────────────
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    ticker = update.message.text.strip().upper().split()[0]
+    parts = update.message.text.strip().upper().split()
+    ticker = parts[0]
+    grade_input = parts[1].lower() if len(parts) > 1 else None
 
-    if ticker not in TICKER_GRADE:
+    # 등록 종목이면 grade 자동 결정, 미등록이면 입력 등급 사용
+    grade = TICKER_GRADE.get(ticker) or (grade_input and _GRADE_MAP.get(grade_input))
+
+    if not grade:
         await update.message.reply_text(format_unknown_ticker(ticker), parse_mode='HTML')
         return
 
@@ -129,8 +142,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             loop.run_in_executor(None, fetch_ma_status, ticker),
         )
 
-        msg = format_first_entry(ticker, close, date, vix, below_50ma, below_200ma)
-        kb = _make_keyboard(ticker, close, date, vix, below_50ma, below_200ma)
+        msg = format_first_entry(ticker, close, date, vix, below_50ma, below_200ma, grade)
+        kb = _make_keyboard(ticker, grade, close, date, vix, below_50ma, below_200ma)
         await wait.edit_text(msg, parse_mode='HTML', reply_markup=kb)
 
     except Exception as e:
@@ -146,7 +159,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
 
     try:
-        _, ticker, close_str, date, vix_str, b50_str, b200_str = query.data.split('|')
+        _, ticker, grade, close_str, date, vix_str, b50_str, b200_str = query.data.split('|')
         close = float(close_str)
         vix = float(vix_str) if vix_str else None
         below_50ma = bool(int(b50_str))
@@ -156,8 +169,8 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text('❌ 오류가 발생했습니다. 다시 입력해 주세요.')
         return
 
-    msg = format_first_entry(ticker, close, date, vix, below_50ma, below_200ma)
-    kb = _make_keyboard(ticker, close, date, vix, below_50ma, below_200ma)
+    msg = format_first_entry(ticker, close, date, vix, below_50ma, below_200ma, grade)
+    kb = _make_keyboard(ticker, grade, close, date, vix, below_50ma, below_200ma)
     await query.edit_message_text(msg, parse_mode='HTML', reply_markup=kb)
 
 
@@ -169,8 +182,8 @@ async def handle_addbuy_callback(update: Update, context: ContextTypes.DEFAULT_T
     await query.answer()
 
     try:
-        # addbuy|TICKER|CLOSE|DATE|VIX|BELOW50|BELOW200|ROUND
-        _, ticker, close_str, date, vix_str, b50_str, b200_str, round_str = query.data.split('|')
+        # addbuy|TICKER|GRADE|CLOSE|DATE|VIX|BELOW50|BELOW200|ROUND
+        _, ticker, grade, close_str, date, vix_str, b50_str, b200_str, round_str = query.data.split('|')
         close = float(close_str)
         vix = float(vix_str) if vix_str else None
         below_50ma = bool(int(b50_str))
@@ -183,6 +196,7 @@ async def handle_addbuy_callback(update: Update, context: ContextTypes.DEFAULT_T
 
     context.user_data.update({
         'ticker': ticker,
+        'grade': grade,
         'close': close,
         'date': date,
         'vix': vix,
@@ -225,6 +239,7 @@ async def handle_avg_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
         below_200ma=d['below_200ma'],
         from_round=d['from_round'],
         input_avg=avg_price,
+        grade=d.get('grade'),
     )
     await update.message.reply_text(msg, parse_mode='HTML')
 

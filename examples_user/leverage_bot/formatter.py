@@ -1,7 +1,7 @@
 """Telegram HTML 메시지 포맷터"""
 import math
 from typing import Optional
-from calc import GRADE_CONFIG, TICKER_GRADE, get_warnings, calculate_buy_plan, calculate_from_avg
+from calc import GRADE_CONFIG, TICKER_GRADE, get_warnings, calculate_buy_plan, calculate_from_avg, FEE
 
 
 def _p(x: float) -> str:
@@ -50,9 +50,10 @@ def format_first_entry(
     vix: Optional[float],
     below_50ma: bool,
     below_200ma: bool,
+    grade: Optional[str] = None,
 ) -> str:
     """1차 진입가 메시지"""
-    grade = TICKER_GRADE[ticker]
+    grade = grade or TICKER_GRADE[ticker]
     cfg = GRADE_CONFIG[grade]
     plan = calculate_buy_plan(close_price, grade, vix, below_50ma, below_200ma)
     warnings = _filter_warnings(get_warnings(ticker, grade, vix, below_50ma, below_200ma))
@@ -66,7 +67,7 @@ def format_first_entry(
         _cond_str(vix, below_50ma, below_200ma, plan['vix_adj']),
         '',
         '┌─ <b>1차 진입가</b>',
-        f'│  매수가  <b>{buy}</b>',
+        f'│  매수가  <code>{buy}</code>',
         f'└  투입    {r["amount"]}만원',
     ]
 
@@ -88,9 +89,10 @@ def format_add_buy_result(
     below_200ma: bool,
     from_round: int,
     input_avg: float,
+    grade: Optional[str] = None,
 ) -> str:
     """N차 추매 결과 메시지"""
-    grade = TICKER_GRADE[ticker]
+    grade = grade or TICKER_GRADE[ticker]
     cfg = GRADE_CONFIG[grade]
     plan = calculate_from_avg(input_avg, from_round, grade, vix, below_50ma, below_200ma)
     warnings = _filter_warnings(get_warnings(ticker, grade, vix, below_50ma, below_200ma))
@@ -107,7 +109,7 @@ def format_add_buy_result(
         cur_tgt_pct = target_pcts[1]
     else:
         cur_tgt_pct = target_pcts[2]
-    cur_tgt = _p(input_avg * (1 + cur_tgt_pct / 100))
+    cur_tgt = _p(input_avg * (1 + cur_tgt_pct / 100 + FEE))
     cur_stp = _p(input_avg * (1 - cfg['stop_pct'] / 100))
 
     buy  = _p(r["buy_price"])
@@ -121,14 +123,16 @@ def format_add_buy_result(
         _cond_str(vix, below_50ma, below_200ma, 0),
         '',
         f'┌─ <b>현재 포지션</b>  ({from_round - 1}차까지)',
-        f'│  목표가  {cur_tgt}  <i>(+{cur_tgt_pct:.0f}%)</i>',
-        f'└  손절가  {cur_stp}  <i>(−{cfg["stop_pct"]:.0f}%)</i>',
+        f'└  목표가  <code>{cur_tgt}</code>  <i>(+{cur_tgt_pct:.0f}%)</i>',
         '',
         f'┌─ <b>{from_round}차 추매</b>{star}',
-        f'│  매수가  <b>{buy}</b>',
-        f'│  새평단  {avg}',
-        f'│  목표가  {tgt}  <i>({r["target_label"]})</i>',
-        f'│  손절가  {stp}  <i>(−{cfg["stop_pct"]:.0f}%)</i>',
+        f'│  매수가  <code>{buy}</code>  <i>(평단 −{plan["add_pct"]:.0f}%)</i>',
+        f'│  새평단  <code>{avg}</code>',
+        f'│  목표가  <code>{tgt}</code>  <i>({r["target_label"]})</i>',
+        *(
+            [f'│  손절가  <code>{stp}</code>  <i>(−{cfg["stop_pct"]:.0f}%)</i>']
+            if from_round == plan['recommended_max'] else []
+        ),
         f'└  투입 {r["amount"]}만  누적 {r["total_invested"]}만',
     ]
 
@@ -145,6 +149,11 @@ def format_unknown_ticker(ticker: str) -> str:
     tickers = ', '.join(sorted(TICKER_GRADE.keys()))
     return (
         f'❌ <b>{ticker}</b>는 등록되지 않은 종목입니다.\n\n'
+        f'등급을 붙여 입력하면 계산할 수 있습니다:\n'
+        f'<code>{ticker} 1</code>  1등급 안정형\n'
+        f'<code>{ticker} 1v</code>  1등급 변동형\n'
+        f'<code>{ticker} 2</code>  2등급 단일주\n'
+        f'<code>{ticker} 3</code>  3등급 고위험\n\n'
         f'<b>등록 종목 ({len(TICKER_GRADE)}개):</b>\n'
         f'<code>{tickers}</code>'
     )

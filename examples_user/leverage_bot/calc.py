@@ -126,6 +126,9 @@ SPECIAL_WARNINGS: dict[str, str] = {
 }
 
 
+FEE = 0.003  # 편도 수수료 0.3% (매수+매도 합산 적용)
+
+
 def get_ticker_cluster(ticker: str) -> Optional[str]:
     for cluster, tickers in CLUSTERS.items():
         if ticker in tickers:
@@ -173,11 +176,11 @@ def calculate_buy_plan(close_price: float, grade: str,
         avg = new_avg
 
         if i == 0:
-            target, label = avg * (1 + target_pcts[0] / 100), f'+{target_pcts[0]:.0f}%'
+            target, label = avg * (1 + target_pcts[0] / 100 + FEE), f'+{target_pcts[0]:.0f}%'
         elif i <= 2:
-            target, label = avg * (1 + target_pcts[1] / 100), f'+{target_pcts[1]:.0f}%'
+            target, label = avg * (1 + target_pcts[1] / 100 + FEE), f'+{target_pcts[1]:.0f}%'
         else:
-            target, label = avg * (1 + target_pcts[2] / 100), f'+{target_pcts[2]:.0f}% / 본전'
+            target, label = avg * (1 + target_pcts[2] / 100 + FEE), f'+{target_pcts[2]:.0f}% / 본전'
 
         rounds.append({
             'round': i + 1,
@@ -238,11 +241,11 @@ def calculate_from_avg(avg_price: float, from_round: int, grade: str,
 
         round_num = i + 1
         if round_num == 1:
-            target, label = avg * (1 + target_pcts[0] / 100), f'+{target_pcts[0]:.0f}%'
+            target, label = avg * (1 + target_pcts[0] / 100 + FEE), f'+{target_pcts[0]:.0f}%'
         elif round_num <= 3:
-            target, label = avg * (1 + target_pcts[1] / 100), f'+{target_pcts[1]:.0f}%'
+            target, label = avg * (1 + target_pcts[1] / 100 + FEE), f'+{target_pcts[1]:.0f}%'
         else:
-            target, label = avg * (1 + target_pcts[2] / 100), f'+{target_pcts[2]:.0f}% / 본전'
+            target, label = avg * (1 + target_pcts[2] / 100 + FEE), f'+{target_pcts[2]:.0f}% / 본전'
 
         rounds.append({
             'round': round_num,
