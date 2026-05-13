@@ -5,8 +5,13 @@ from calc import GRADE_CONFIG, TICKER_GRADE, get_warnings, calculate_buy_plan, c
 
 
 def _p(x: float) -> str:
-    """소수점 둘째 자리 버림 (반올림 없음)"""
-    return f'${math.floor(x * 100) / 100:,.2f}'
+    """소수점 둘째 자리 버림 (반올림 없음) — $ 없이 숫자만"""
+    return f'{math.floor(x * 100) / 100:,.2f}'
+
+
+def _cp(x: float) -> str:
+    """복사 가능한 가격 태그 — $<code>숫자</code>"""
+    return f'$<code>{_p(x)}</code>'
 
 
 def _grade_emoji(grade: str) -> str:
@@ -59,7 +64,7 @@ def format_first_entry(
     warnings = _filter_warnings(get_warnings(ticker, grade, vix, below_50ma, below_200ma))
 
     r = plan['rounds'][0]
-    buy = _p(r["buy_price"])
+    buy = _cp(r["buy_price"])
 
     lines = [
         f'{_grade_emoji(grade)} <b>{ticker}</b>  {cfg["name"]}',
@@ -67,7 +72,7 @@ def format_first_entry(
         _cond_str(vix, below_50ma, below_200ma, plan['vix_adj']),
         '',
         '┌─ <b>1차 진입가</b>',
-        f'│  매수가  <code>{buy}</code>',
+        f'│  매수가  {buy}',
         f'└  투입    {r["amount"]}만원',
     ]
 
@@ -109,13 +114,13 @@ def format_add_buy_result(
         cur_tgt_pct = target_pcts[1]
     else:
         cur_tgt_pct = target_pcts[2]
-    cur_tgt = _p(input_avg * (1 + cur_tgt_pct / 100 + FEE))
-    cur_stp = _p(input_avg * (1 - cfg['stop_pct'] / 100))
+    cur_tgt = _cp(input_avg * (1 + cur_tgt_pct / 100 + FEE))
+    cur_stp = _cp(input_avg * (1 - cfg['stop_pct'] / 100))
 
-    buy  = _p(r["buy_price"])
-    avg  = _p(r["avg_price"])
-    tgt  = _p(r["target_price"])
-    stp  = _p(r["stop_price"])
+    buy  = _cp(r["buy_price"])
+    avg  = _cp(r["avg_price"])
+    tgt  = _cp(r["target_price"])
+    stp  = _cp(r["stop_price"])
 
     lines = [
         f'{_grade_emoji(grade)} <b>{ticker}</b>  {cfg["name"]}',
@@ -123,14 +128,14 @@ def format_add_buy_result(
         _cond_str(vix, below_50ma, below_200ma, 0),
         '',
         f'┌─ <b>현재 포지션</b>  ({from_round - 1}차까지)',
-        f'└  목표가  <code>{cur_tgt}</code>  <i>(+{cur_tgt_pct:.0f}%)</i>',
+        f'└  목표가  {cur_tgt}  <i>(+{cur_tgt_pct:.0f}%)</i>',
         '',
         f'┌─ <b>{from_round}차 추매</b>{star}',
-        f'│  매수가  <code>{buy}</code>  <i>(평단 −{plan["add_pct"]:.0f}%)</i>',
-        f'│  새평단  <code>{avg}</code>',
-        f'│  목표가  <code>{tgt}</code>  <i>({r["target_label"]})</i>',
+        f'│  매수가  {buy}  <i>(평단 −{plan["add_pct"]:.0f}%)</i>',
+        f'│  새평단  {avg}',
+        f'│  목표가  {tgt}  <i>({r["target_label"]})</i>',
         *(
-            [f'│  손절가  <code>{stp}</code>  <i>(−{cfg["stop_pct"]:.0f}%)</i>']
+            [f'│  손절가  {stp}  <i>(−{cfg["stop_pct"]:.0f}%)</i>']
             if from_round == plan['recommended_max'] else []
         ),
         f'└  투입 {r["amount"]}만  누적 {r["total_invested"]}만',
