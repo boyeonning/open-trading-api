@@ -99,6 +99,7 @@ async def analyze_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 result = await loop.run_in_executor(None, analyze_domestic_stock, stock_input)
                 message = format_analysis_message(result, is_overseas=False)
                 add_to_history(user_id, stock_input, f"🇰🇷 {result.get('stock_name', stock_input)}")
+                is_etf = False  # 아래 버튼 생성 분기용
             except Exception as stock_error:
                 if analyze_etf is not None and len(stock_input) == 6:
                     logger.info(f"국내주식 검색 실패, ETF로 재시도: {stock_input}")
@@ -106,25 +107,43 @@ async def analyze_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         result = await loop.run_in_executor(None, analyze_etf, stock_input)
                         message = format_analysis_message(result, is_overseas=False, is_etf=True)
                         add_to_history(user_id, stock_input, f"📈 {result.get('etf_name', stock_input)}")
+                        is_etf = True  # 버튼 생성 분기용
                     except Exception as etf_error:
                         logger.error(f"ETF 검색도 실패: {etf_error}")
                         raise stock_error
                 else:
                     raise stock_error
 
-        # 캔들 지지/저항 버튼 추가
-        reply_markup = None
+        # 버튼 구성
+        keyboard = []
+
+        # 국내주식: KRX ↔ NXT 전환 버튼
+        if not is_overseas and not is_etf:
+            current_market = result.get('market', 'J')
+            if current_market == 'J':
+                keyboard.append([InlineKeyboardButton(
+                    "🔄 NXT(넥스트레이드)로 조회",
+                    callback_data=f"market:NX:{stock_input}"
+                )])
+            else:
+                keyboard.append([InlineKeyboardButton(
+                    "🔄 KRX(한국거래소)로 조회",
+                    callback_data=f"market:J:{stock_input}"
+                )])
+
+        # 캔들 지지/저항 버튼
         if result.get('candle_sr'):
             cache_key = f'candle_sr|{stock_input}'
             context.user_data[cache_key] = {
                 'data': result['candle_sr'],
                 'is_overseas': is_overseas
             }
-            keyboard = [[InlineKeyboardButton(
+            keyboard.append([InlineKeyboardButton(
                 "🕯 캔들 지지/저항 보기",
                 callback_data=cache_key
-            )]]
-            reply_markup = InlineKeyboardMarkup(keyboard)
+            )])
+
+        reply_markup = InlineKeyboardMarkup(keyboard) if keyboard else None
 
         await wait_msg.edit_text(message, parse_mode='HTML', reply_markup=reply_markup)
 

@@ -15,6 +15,7 @@ from handlers.message_handlers import (
     analyze_domestic_stock, analyze_overseas_stock,
     handle_analysis_error
 )
+from analyzers.domestic import analyze_stock as _analyze_domestic_market
 
 logger = logging.getLogger(__name__)
 
@@ -128,6 +129,61 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode='HTML'
         )
+        return
+
+    # KRX ↔ NXT 시장 전환 버튼
+    if data.startswith("market:"):
+        # 형식: market:{새 시장코드}:{종목입력값}
+        parts = data.split(":", 2)
+        if len(parts) != 3:
+            return
+        new_market, stock_input = parts[1], parts[2]
+        market_name = "NXT(넥스트레이드)" if new_market == "NX" else "KRX(한국거래소)"
+
+        wait_msg = await query.message.reply_text(f"⏳ {market_name} 데이터 조회 중...")
+
+        try:
+            ka.auth()
+            loop = asyncio.get_running_loop()
+            result = await loop.run_in_executor(
+                None, functools.partial(_analyze_domestic_market, stock_input, new_market)
+            )
+
+            message = format_analysis_message(result, is_overseas=False)
+
+            # 반대 시장 전환 버튼 + 캔들 지지/저항 버튼
+            keyboard = []
+            if new_market == "NX":
+                keyboard.append([InlineKeyboardButton(
+                    "🔄 KRX(한국거래소)로 조회",
+                    callback_data=f"market:J:{stock_input}"
+                )])
+            else:
+                keyboard.append([InlineKeyboardButton(
+                    "🔄 NXT(넥스트레이드)로 조회",
+                    callback_data=f"market:NX:{stock_input}"
+                )])
+
+            if result.get('candle_sr'):
+                cache_key = f'candle_sr|{stock_input}'
+                context.user_data[cache_key] = {
+                    'data': result['candle_sr'],
+                    'is_overseas': False
+                }
+                keyboard.append([InlineKeyboardButton(
+                    "🕯 캔들 지지/저항 보기",
+                    callback_data=cache_key
+                )])
+
+            await wait_msg.edit_text(
+                message, parse_mode='HTML',
+                reply_markup=InlineKeyboardMarkup(keyboard) if keyboard else None
+            )
+        except StockAnalysisError as e:
+            await wait_msg.edit_text(handle_analysis_error(e))
+        except Exception as e:
+            logger.error(f"시장 전환 오류: {e}", exc_info=True)
+            await wait_msg.edit_text(handle_analysis_error(e))
         return
 
     # 캔들 지지/저항 버튼 클릭

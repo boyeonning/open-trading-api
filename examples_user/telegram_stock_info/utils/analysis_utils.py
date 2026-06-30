@@ -66,8 +66,12 @@ def calculate_moving_averages(df: pd.DataFrame, price_col: str, ma_periods: List
 
 def analyze_volume_by_direction(df: pd.DataFrame, latest_price: float,
                                 price_col: str, volume_col: str,
-                                direction: str, price_range: float) -> List[Dict]:
-    """방향별 거래량 분석 (상방/하방)"""
+                                direction: str, price_range: float,
+                                full_df: pd.DataFrame = None) -> List[Dict]:
+    """방향별 거래량 분석 (상방/하방)
+
+    full_df: 상위% 계산 기준이 되는 전체 데이터. None이면 df 자체를 사용.
+    """
     if direction == 'upper':
         filtered_df = df[
             (df[price_col] > latest_price) &
@@ -84,7 +88,9 @@ def analyze_volume_by_direction(df: pd.DataFrame, latest_price: float,
     if filtered_df.empty:
         return []
 
-    vol_pct_rank = df[volume_col].rank(pct=True)
+    # 상위% 계산은 항상 전체 데이터 기준
+    rank_base = full_df if full_df is not None else df
+    vol_pct_rank = rank_base[volume_col].rank(pct=True)
     sorted_df = filtered_df.sort_values(volume_col, ascending=False)
 
     result = []
@@ -96,7 +102,7 @@ def analyze_volume_by_direction(df: pd.DataFrame, latest_price: float,
             'price': row[price_col],
             'diff_pct': diff_calc(row[price_col]),
             'volume': int(row[volume_col]),
-            'volume_rank': 100 - int(vol_pct_rank.loc[idx] * 100)
+            'volume_rank': max(1, 100 - int(vol_pct_rank.loc[idx] * 100))
         })
 
     return result
@@ -124,11 +130,11 @@ def calculate_volume_analysis(df: pd.DataFrame, latest_price: float,
         if not upper_high_vol.empty:
             result['upper'] = {
                 'volume_top3': analyze_volume_by_direction(
-                    upper_high_vol, latest_price, price_col, volume_col, 'upper', float('inf')
+                    upper_high_vol, latest_price, price_col, volume_col, 'upper', float('inf'), full_df=df
                 ),
                 'nearby_top3': analyze_volume_by_direction(
                     df, latest_price, price_col, volume_col, 'upper',
-                    settings['price_range_limits']['nearby']
+                    settings['price_range_limits']['nearby'], full_df=df
                 )
             }
 
@@ -137,11 +143,11 @@ def calculate_volume_analysis(df: pd.DataFrame, latest_price: float,
         if not lower_high_vol.empty:
             result['lower'] = {
                 'volume_top3': analyze_volume_by_direction(
-                    lower_high_vol, latest_price, price_col, volume_col, 'lower', float('inf')
+                    lower_high_vol, latest_price, price_col, volume_col, 'lower', float('inf'), full_df=df
                 ),
                 'nearby_top3': analyze_volume_by_direction(
                     df, latest_price, price_col, volume_col, 'lower',
-                    settings['price_range_limits']['nearby']
+                    settings['price_range_limits']['nearby'], full_df=df
                 )
             }
 
@@ -164,7 +170,7 @@ def calculate_volume_analysis(df: pd.DataFrame, latest_price: float,
                 'price': row[price_col],
                 'diff_pct': (row[price_col] - latest_price) / latest_price * 100,
                 'volume': int(row[volume_col]),
-                'volume_rank': 100 - int(vol_pct_rank.loc[idx] * 100)
+                'volume_rank': max(1, 100 - int(vol_pct_rank.loc[idx] * 100))
             })
 
         result['volume_top3_20pct_all'] = volume_top3_all
@@ -399,7 +405,7 @@ def calculate_candle_sr_levels(
             result.append({
                 'close': close,
                 'volume': int(row[volume_col]),
-                'volume_top_pct': int((1 - vol_pct_rank.loc[idx]) * 100),  # 상위 n%
+                'volume_top_pct': max(1, 100 - int(vol_pct_rank.loc[idx] * 100)),  # 상위 n%
                 'date': str(row[date_col]),
                 'diff_pct': (close - latest_price) / latest_price * 100
             })

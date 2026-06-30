@@ -24,8 +24,13 @@ def format_header(result: dict, is_overseas: bool = False, is_etf: bool = False)
         name = result.get('stock_name', result['stock_code'])
         price = f"{result['latest_price']:,.0f}원"
         icon = "📊"
-    
-    header = f"{icon} <b>{name}</b>\n"
+        market = result.get('market', 'J')
+        market_label = " <code>[NXT]</code>" if market == "NX" else " <code>[KRX]</code>"
+
+    header = f"{icon} <b>{name}</b>"
+    if not is_overseas and not is_etf:
+        header += market_label
+    header += "\n"
     header += f"💰 <b>{price}</b> ({_format_date(result['latest_date'])})\n"
     header += f"━━━━━━━━━━━━━━━━━━━\n\n"
     

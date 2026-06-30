@@ -74,15 +74,19 @@ def get_stock_code(stock_name: str) -> tuple[str, str, list]:
 
 
 @performance_monitor
-def fetch_stock_data(stock_code: str, target_days: int = None) -> pd.DataFrame:
-    """국내주식 일별 데이터 조회 (페이지네이션)"""
+def fetch_stock_data(stock_code: str, target_days: int = None, market: str = "J") -> pd.DataFrame:
+    """국내주식 일별 데이터 조회 (페이지네이션)
+
+    Args:
+        market: 시장 구분 코드 (J: KRX, NX: NXT)
+    """
     if target_days is None:
         target_days = ANALYSIS_SETTINGS['domestic']['target_days']
 
     def api_call(end_date: str) -> pd.DataFrame:
         _, result2 = inquire_daily_itemchartprice(
             env_dv="real",
-            fid_cond_mrkt_div_code="J",
+            fid_cond_mrkt_div_code=market,
             fid_input_iscd=stock_code,
             fid_input_date_1="19000101",
             fid_input_date_2=end_date,
@@ -108,8 +112,12 @@ def fetch_stock_data(stock_code: str, target_days: int = None) -> pd.DataFrame:
 
 
 @performance_monitor
-def analyze_stock(stock_input: str) -> dict:
-    """국내주식 분석 메인 함수"""
+def analyze_stock(stock_input: str, market: str = "J") -> dict:
+    """국내주식 분석 메인 함수
+
+    Args:
+        market: 시장 구분 코드 (J: KRX, NX: NXT)
+    """
     # 6자리 형식(숫자 또는 숫자+알파벳)이면 종목코드로 처리
     if len(stock_input) == 6 and (stock_input.isdigit() or stock_input.isalnum()):
         stock_code = stock_input
@@ -119,7 +127,7 @@ def analyze_stock(stock_input: str) -> dict:
     else:
         stock_code, stock_name, search_results = get_stock_code(stock_input)
 
-    combined_df = fetch_stock_data(stock_code)
+    combined_df = fetch_stock_data(stock_code, market=market)
 
     validate_price_data(combined_df, 'stck_clpr', stock_code)
     for col in ['stck_oprc', 'stck_hgpr', 'stck_lwpr', 'acml_vol']:
@@ -136,6 +144,7 @@ def analyze_stock(stock_input: str) -> dict:
     return {
         'stock_code': stock_code,
         'stock_name': stock_name,
+        'market': market,
         'search_results': search_results,
         'latest_date': latest_date,
         'latest_price': latest_price,
