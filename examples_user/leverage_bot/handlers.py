@@ -19,12 +19,13 @@ logger = logging.getLogger(__name__)
 # ConversationHandler 상태
 WAITING_AVG = 1
 
-# 등급 입력 약어 → grade key
+# 등급 입력 약어 → grade key (HTML 기법표 A~E 등급)
 _GRADE_MAP = {
-    '1': 'tier1_stable', '1s': 'tier1_stable',
-    '1v': 'tier1_volatile',
-    '2': 'tier2',
-    '3': 'tier3',
+    'a': 'A',
+    'b': 'B',
+    'c': 'C',
+    'd': 'D',
+    'e': 'E',
 }
 
 
@@ -47,6 +48,7 @@ def _make_keyboard(ticker: str, grade: str, close: float, date: str,
 #  커맨드 핸들러
 # ──────────────────────────────────────────────────────────
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    logger.warning(f"chat_id: {update.effective_chat.id}")
     await update.message.reply_text(format_start_message(), parse_mode='HTML')
 
 
@@ -251,3 +253,5 @@ async def cancel_conv(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.clear()
     await update.message.reply_text('취소했습니다.')
     return ConversationHandler.END
+
+

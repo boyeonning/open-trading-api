@@ -13,12 +13,17 @@ from telegram.ext import (
     CallbackQueryHandler, ConversationHandler, filters,
 )
 
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from handlers import (
     cmd_start, cmd_help, cmd_list, cmd_vix, cmd_scan,
     handle_message, handle_callback,
     handle_addbuy_callback, handle_avg_input, cancel_conv,
     WAITING_AVG,
 )
+from domestic_flow.handlers import cmd_flow, handle_flow_callback
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -52,8 +57,10 @@ def main():
     app.add_handler(CommandHandler('list',   cmd_list))
     app.add_handler(CommandHandler('vix',    cmd_vix))
     app.add_handler(CommandHandler('scan',   cmd_scan))
-    app.add_handler(CallbackQueryHandler(handle_callback, pattern='^calc\\|'))  # 시장위치 버튼
-    app.add_handler(addbuy_conv)                                                # 추매 버튼 + 평단 입력
+    app.add_handler(CommandHandler('flow',   cmd_flow))
+    app.add_handler(CallbackQueryHandler(handle_flow_callback, pattern='^flow\\|'))  # 수급 버튼
+    app.add_handler(CallbackQueryHandler(handle_callback, pattern='^calc\\|'))       # 시장위치 버튼
+    app.add_handler(addbuy_conv)                                                     # 추매 버튼 + 평단 입력
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     logger.info('레버리지 ETF 계산기 봇 시작...')
