@@ -75,12 +75,23 @@ async def cmd_alert(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     arg = context.args[0].lower() if context.args else None
 
+    from monitor import _is_market_hours, _NEAR_THRESHOLD
+    from weekly_config import WEEKLY_DATE, WEEKLY_TITLE, WATCHLIST, SIGNAL_GO
+
+    market_now = _is_market_hours()
+    go_count   = sum(1 for i in WATCHLIST.values() if i['signal'] in SIGNAL_GO)
+    market_txt = '🟢 장중 (모니터링 중)' if market_now else '🔴 장외 (장중에만 실행)'
+
     if arg == 'on':
         chats.add(chat_id)
         await update.message.reply_text(
-            '🔔 <b>자동 알림 ON</b>\n'
-            '미국 장중(평일 KST 23:00~06:00) 5분마다 체크하여\n'
-            '진입가 도달 또는 3% 이내 근접 시 알림을 보내드립니다.',
+            f'🔔 <b>자동 알림 ON</b>\n\n'
+            f'시장 상태: {market_txt}\n'
+            f'기법 기준: {WEEKLY_DATE} {WEEKLY_TITLE}\n'
+            f'감시 종목: {go_count}개 (🔵🟢 신호)\n'
+            f'체크 주기: 5분\n'
+            f'알림 조건: 진입가 도달 또는 {_NEAR_THRESHOLD:.0f}% 이내 근접\n'
+            f'중복 방지: 종목당 30분 쿨다운',
             parse_mode='HTML',
         )
     elif arg == 'off':
@@ -89,7 +100,9 @@ async def cmd_alert(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         status = '🔔 ON' if chat_id in chats else '🔕 OFF'
         await update.message.reply_text(
-            f'자동 알림 상태: <b>{status}</b>\n\n'
+            f'자동 알림 상태: <b>{status}</b>\n'
+            f'시장 상태: {market_txt}\n'
+            f'기법 기준: {WEEKLY_DATE} {WEEKLY_TITLE}  ({go_count}종목 감시 중)\n\n'
             f'/alert on  — 알림 시작\n'
             f'/alert off — 알림 중단',
             parse_mode='HTML',
