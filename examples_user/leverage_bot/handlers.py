@@ -100,10 +100,14 @@ async def cmd_alert(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text('🔕 자동 알림 OFF')
     elif arg == 'test':
         # 장중 여부 무관하게 즉시 1회 체크 → 결과를 요청한 채팅에 직접 표시
-        await update.message.reply_text('🔍 즉시 체크 중...', parse_mode='HTML')
-        from monitor import _run_check
-        result = await _run_check(context, force=True)
-        await update.message.reply_text(result, parse_mode='HTML')
+        wait = await update.message.reply_text('🔍 즉시 체크 중... (약 10~20초 소요)', parse_mode='HTML')
+        try:
+            from monitor import _run_check
+            result = await _run_check(context, force=True)
+            await wait.edit_text(result, parse_mode='HTML')
+        except Exception as e:
+            logger.error(f'/alert test 오류: {e}', exc_info=True)
+            await wait.edit_text(f'❌ 오류 발생: {e}')
     else:
         status = '🔔 ON' if chat_id in chats else '🔕 OFF'
         await update.message.reply_text(

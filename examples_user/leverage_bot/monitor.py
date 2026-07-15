@@ -57,7 +57,7 @@ async def _run_check(context: ContextTypes.DEFAULT_TYPE, force: bool = False) ->
     실제 가격 체크 로직. force=True 이면 쿨다운·장외 체크 무시.
     반환값: 알림 메시지 문자열 (알림 조건 없으면 상태 요약 문자열)
     """
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     candidates = {t: info for t, info in WATCHLIST.items() if info['signal'] in SIGNAL_GO}
 
     vix = await loop.run_in_executor(None, fetch_vix)
