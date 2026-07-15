@@ -91,20 +91,28 @@ async def cmd_alert(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f'감시 종목: {go_count}개 (🔵🟢 신호)\n'
             f'체크 주기: 5분\n'
             f'알림 조건: 진입가 도달 또는 {_NEAR_THRESHOLD:.0f}% 이내 근접\n'
-            f'중복 방지: 종목당 30분 쿨다운',
+            f'중복 방지: 종목당 30분 쿨다운\n\n'
+            f'<i>/alert test 로 즉시 테스트 가능</i>',
             parse_mode='HTML',
         )
     elif arg == 'off':
         chats.discard(chat_id)
         await update.message.reply_text('🔕 자동 알림 OFF')
+    elif arg == 'test':
+        # 장중 여부 무관하게 즉시 1회 체크 → 결과를 요청한 채팅에 직접 표시
+        await update.message.reply_text('🔍 즉시 체크 중...', parse_mode='HTML')
+        from monitor import _run_check
+        result = await _run_check(context, force=True)
+        await update.message.reply_text(result, parse_mode='HTML')
     else:
         status = '🔔 ON' if chat_id in chats else '🔕 OFF'
         await update.message.reply_text(
             f'자동 알림 상태: <b>{status}</b>\n'
             f'시장 상태: {market_txt}\n'
             f'기법 기준: {WEEKLY_DATE} {WEEKLY_TITLE}  ({go_count}종목 감시 중)\n\n'
-            f'/alert on  — 알림 시작\n'
-            f'/alert off — 알림 중단',
+            f'/alert on   — 알림 시작\n'
+            f'/alert off  — 알림 중단\n'
+            f'/alert test — 즉시 1회 체크',
             parse_mode='HTML',
         )
 

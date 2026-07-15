@@ -44,6 +44,88 @@ def _is_market_hours() -> bool:
     return _OPEN_UTC <= minutes <= _CLOSE_UTC
 
 
+def _fmt_row(ticker, grade, prev_close, entry, current, pct, action):
+    return [
+        f'{_GRADE_EMOJI[grade]} <b>{ticker}</b>  ({pct:+.1f}%)',
+        f'   전일종가 <code>${prev_close:,.2f}</code> → 진입가 <code>${entry:,.2f}</code> | 현재가 <code>${current:,.2f}</code>',
+        *([ f'   <i>{action}</i>'] if action else []),
+    ]
+
+
+async def _run_check(context: ContextTypes.DEFAULT_TYPE, force: bool = False) -> str:
+    """
+    실제 가격 체크 로직. force=True 이면 쿨다운·장외 체크 무시.
+    반환값: 알림 메시지 문자열 (알림 조건 없으면 상태 요약 문자열)
+    """
+    loop = asyncio.get_event_loop()
+    candidates = {t: info for t, info in WATCHLIST.items() if info['signal'] in SIGNAL_GO}
+
+    vix = await loop.run_in_executor(None, fetch_vix)
+    if not force and vix is not None and vix >= 40:
+        return f'VIX {vix:.1f} ≥ 40 — 전체 스킵'
+
+    last_alert: dict = context.bot_data.setdefault('last_alert', {})
+    now = datetime.now(UTC)
+
+    reached, near, skipped = [], [], []
+
+    for ticker, info in candidates.items():
+        snap = await loop.run_in_executor(None, fetch_ticker_snapshot, ticker)
+        await asyncio.sleep(0.35)
+        if snap is None:
+            skipped.append(ticker)
+            continue
+
+        grade = info['grade']
+        if not force and vix is not None and vix >= 30 and grade != 'A':
+            continue
+
+        prev_close = snap['prev_close']
+        plan    = calculate_buy_plan(prev_close, grade, vix, False, False,
+                                     entry_pct_override=info.get('entry_pct'))
+        entry   = plan['rounds'][0]['buy_price']
+        current = snap['current_price']
+        gap_pct = (entry - current) / current * 100
+
+        last = last_alert.get(ticker)
+        if not force and last and (now - last) < _ALERT_COOLDOWN:
+            continue
+
+        row = (ticker, grade, prev_close, entry, current, gap_pct, info['action'])
+
+        if current <= entry:
+            reached.append(row)
+            if not force:
+                last_alert[ticker] = now
+        elif current < prev_close and gap_pct > -_NEAR_THRESHOLD:
+            near.append(row)
+            if not force:
+                last_alert[ticker] = now
+
+    # ── 메시지 생성 ──────────────────────────────────────
+    now_kst = datetime.now(KST).strftime('%H:%M KST')
+    vix_txt = f'  VIX {vix:.1f}' if vix is not None else ''
+    prefix  = '🔍 <b>즉시 체크 결과</b>' if force else '🔔 <b>LevDip 자동 알림</b>'
+    lines   = [f'{prefix}  {now_kst}{vix_txt}', '']
+
+    if reached:
+        lines.append('🔴 <b>진입가 도달!</b>')
+        for row in sorted(reached, key=lambda x: x[5]):
+            lines += _fmt_row(*row)
+    if near:
+        lines += ['', f'⚡ <b>진입가 {_NEAR_THRESHOLD:.0f}% 이내 근접</b>']
+        for row in sorted(near, key=lambda x: x[5], reverse=True):
+            lines += _fmt_row(*row)
+
+    if not reached and not near:
+        # 조건 미달 — 전 종목 현황 요약
+        lines.append(f'조건 충족 종목 없음  ({len(candidates)}종목 체크)')
+        if skipped:
+            lines.append(f'조회 실패: {", ".join(skipped)}')
+
+    return '\n'.join(lines)
+
+
 async def check_and_alert(context: ContextTypes.DEFAULT_TYPE):
     """5분마다 실행 — 조건 충족 종목에 자동 알림 발송"""
     chat_ids: set = context.bot_data.get('alert_chats', set())
@@ -53,84 +135,11 @@ async def check_and_alert(context: ContextTypes.DEFAULT_TYPE):
     if not _is_market_hours():
         return
 
-    loop = asyncio.get_event_loop()
+    msg = await _run_check(context, force=False)
 
-    candidates = {t: info for t, info in WATCHLIST.items() if info['signal'] in SIGNAL_GO}
-    if not candidates:
+    # 조건 미달이면 발송 안 함 (접두어로 구분)
+    if '조건 충족 종목 없음' in msg or msg.startswith('VIX'):
         return
-
-    # VIX 조회
-    vix = await loop.run_in_executor(None, fetch_vix)
-    if vix is not None and vix >= 40:
-        logger.info(f'모니터: VIX {vix:.1f} ≥ 40, 전체 스킵')
-        return
-
-    # 중복 알림 방지 추적
-    last_alert: dict = context.bot_data.setdefault('last_alert', {})
-    now = datetime.now(UTC)
-
-    reached = []
-    near    = []
-
-    for ticker, info in candidates.items():
-        snap = await loop.run_in_executor(None, fetch_ticker_snapshot, ticker)
-        await asyncio.sleep(0.35)  # KIS rate limit 방지
-        if snap is None:
-            continue
-
-        grade = info['grade']
-
-        # VIX ≥ 30: A등급만 허용
-        if vix is not None and vix >= 30 and grade != 'A':
-            continue
-
-        prev_close = snap['prev_close']
-        plan    = calculate_buy_plan(prev_close, grade, vix, False, False,
-                                     entry_pct_override=info.get('entry_pct'))
-        entry   = plan['rounds'][0]['buy_price']
-        current = snap['current_price']
-        gap_pct = (entry - current) / current * 100  # 양수 = 진입가 아래
-
-        # 쿨다운 체크 (30분 이내 이미 알림 보낸 종목 스킵)
-        last = last_alert.get(ticker)
-        if last and (now - last) < _ALERT_COOLDOWN:
-            continue
-
-        row = (ticker, grade, prev_close, entry, current, gap_pct, info['action'])
-
-        if current <= entry:
-            reached.append(row)
-            last_alert[ticker] = now
-        elif current < prev_close and gap_pct > -_NEAR_THRESHOLD:
-            near.append(row)
-            last_alert[ticker] = now
-
-    if not reached and not near:
-        return
-
-    # ── 메시지 생성 ──────────────────────────────────────
-    now_kst = datetime.now(KST).strftime('%H:%M KST')
-    vix_txt = f'  VIX {vix:.1f}' if vix is not None else ''
-    lines   = [f'🔔 <b>LevDip 자동 알림</b>  {now_kst}{vix_txt}', '']
-
-    def _fmt(ticker, grade, prev_close, entry, current, pct, action):
-        return [
-            f'{_GRADE_EMOJI[grade]} <b>{ticker}</b>  ({pct:+.1f}%)',
-            f'   전일종가 <code>${prev_close:,.2f}</code> → 진입가 <code>${entry:,.2f}</code> | 현재가 <code>${current:,.2f}</code>',
-            *([ f'   <i>{action}</i>'] if action else []),
-        ]
-
-    if reached:
-        lines.append('🔴 <b>진입가 도달!</b>')
-        for row in sorted(reached, key=lambda x: x[5]):
-            lines += _fmt(*row)
-
-    if near:
-        lines += ['', f'⚡ <b>진입가 {_NEAR_THRESHOLD:.0f}% 이내 근접</b>']
-        for row in sorted(near, key=lambda x: x[5], reverse=True):
-            lines += _fmt(*row)
-
-    msg = '\n'.join(lines)
 
     for chat_id in list(chat_ids):
         try:
