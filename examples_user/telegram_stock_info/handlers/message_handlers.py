@@ -12,7 +12,7 @@ from utils.exceptions import (
     StockAnalysisError, StockNotFoundError, DataFetchError,
     InsufficientDataError, APIError, InvalidInputError
 )
-from handlers.state import add_to_history
+from handlers.state import add_to_history, user_history
 
 logger = logging.getLogger(__name__)
 
@@ -98,7 +98,7 @@ async def analyze_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             try:
                 result = await loop.run_in_executor(None, analyze_domestic_stock, stock_input)
                 message = format_analysis_message(result, is_overseas=False)
-                add_to_history(user_id, stock_input, f"🇰🇷 {result.get('stock_name', stock_input)}")
+                add_to_history(user_id, stock_input, f"🇰🇷 {result.get('stock_name') or stock_input}")
                 is_etf = False  # 아래 버튼 생성 분기용
             except Exception as stock_error:
                 if analyze_etf is not None and len(stock_input) == 6:
@@ -142,6 +142,10 @@ async def analyze_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "🕯 캔들 지지/저항 보기",
                 callback_data=cache_key
             )])
+
+        # 최근 기록 버튼
+        if user_id in user_history and len(user_history[user_id]) >= 1:
+            keyboard.append([InlineKeyboardButton("📜 최근 기록", callback_data="show_history")])
 
         reply_markup = InlineKeyboardMarkup(keyboard) if keyboard else None
 
