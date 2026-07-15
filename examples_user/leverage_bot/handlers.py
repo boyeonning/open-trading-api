@@ -10,7 +10,10 @@ from telegram.ext import ContextTypes, ConversationHandler
 
 from calc import TICKER_GRADE, calculate_buy_plan
 from fetcher import fetch_prev_close, fetch_vix, fetch_ma_status, fetch_ticker_snapshot
-from data_loader import load_latest_watchlist, SIGNAL_GO, SIGNAL_COND, SIGNAL_HOLD, SIGNAL_STOP
+from weekly_config import (
+    WATCHLIST, WEEKLY_DATE, WEEKLY_TITLE,
+    SIGNAL_GO, SIGNAL_COND, SIGNAL_HOLD, SIGNAL_STOP,
+)
 
 KST = timezone(timedelta(hours=9))
 from formatter import (
@@ -101,22 +104,14 @@ async def cmd_scan(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def cmd_check(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """주간 기법 파일 기반 — 현재가 vs 진입가 스캔"""
-    wait = await update.message.reply_text('🔍 주간 기법 파일 로드 + 현재가 스캔 중...', parse_mode='HTML')
+    """주간 기법 기반 — 현재가 vs 진입가 스캔 (weekly_config 정적 데이터 사용)"""
+    wait = await update.message.reply_text('🔍 현재가 스캔 중...', parse_mode='HTML')
 
     loop = asyncio.get_running_loop()
 
-    # 주간 기법 파일 로드 (동기, 빠름)
-    watchlist, filename = await loop.run_in_executor(None, load_latest_watchlist)
-
-    if not watchlist:
-        await wait.edit_text('❌ data/ 폴더에 기법 HTML 파일이 없습니다.')
-        return
-
     # 🔵🟢만 — 50일선·200일선 위 + 이번 주 조건 OK 종목
-    # 🟡(조건부)·🟠(50일선↓)·🔴(200일선↓) 제외
     candidates = {
-        t: info for t, info in watchlist.items()
+        t: info for t, info in WATCHLIST.items()
         if info['signal'] in SIGNAL_GO
     }
 
@@ -158,7 +153,8 @@ async def cmd_check(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 continue
 
         prev_close = snap['prev_close']
-        plan       = calculate_buy_plan(prev_close, grade, vix, False, False)
+        plan       = calculate_buy_plan(prev_close, grade, vix, False, False,
+                                        entry_pct_override=info.get('entry_pct'))
         entry      = plan['rounds'][0]['buy_price']
         current    = snap['current_price']
         # 진입가 기준 거리: 양수 = 진입가 아래(초과), 음수 = 아직 안 내려옴
@@ -177,11 +173,9 @@ async def cmd_check(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     now_kst = datetime.now(KST).strftime('%H:%M KST')
     vix_txt = f'  VIX {vix:.1f}' if vix is not None else ''
-    # 파일명에서 날짜 부분만 추출 (YYYY-MM-DD)
-    date_part = filename[:10] if filename else ''
     lines = [
         f'📊 <b>진입가 스캔</b>  {now_kst}{vix_txt}',
-        f'<code>{date_part} 기법 기준  {len(candidates)}종목 검토</code>',
+        f'<code>{WEEKLY_DATE} {WEEKLY_TITLE}  {len(candidates)}종목 검토</code>',
         '',
     ]
 
@@ -235,31 +229,22 @@ async def cmd_vix(update: Update, context: ContextTypes.DEFAULT_TYPE):
 #  메시지 핸들러 — 티커 입력 → 1차 진입가
 # ──────────────────────────────────────────────────────────
 async def cmd_weekly(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """현재 로드된 주간 기법 파일 요약"""
-    loop = asyncio.get_running_loop()
-    watchlist, filename = await loop.run_in_executor(None, load_latest_watchlist)
-
-    if not watchlist:
-        await update.message.reply_text('❌ data/ 폴더에 기법 HTML 파일이 없습니다.')
-        return
-
+    """이번 주 기법 데이터 요약 (weekly_config 기준)"""
     _GRADE_EMOJI = {'A': '🔵', 'B': '🟢', 'C': '🟡', 'D': '🟠', 'E': '🔴'}
 
-    go   = [(t, i) for t, i in watchlist.items() if i['signal'] in SIGNAL_GO]
-    cond = [(t, i) for t, i in watchlist.items() if i['signal'] in SIGNAL_COND]
-    hold = [(t, i) for t, i in watchlist.items() if i['signal'] in SIGNAL_HOLD]
-    stop = [(t, i) for t, i in watchlist.items() if i['signal'] in SIGNAL_STOP]
+    go   = [(t, i) for t, i in WATCHLIST.items() if i['signal'] in SIGNAL_GO]
+    cond = [(t, i) for t, i in WATCHLIST.items() if i['signal'] in SIGNAL_COND]
+    hold = [(t, i) for t, i in WATCHLIST.items() if i['signal'] in SIGNAL_HOLD]
+    stop = [(t, i) for t, i in WATCHLIST.items() if i['signal'] in SIGNAL_STOP]
 
     def _fmt(items):
         return '  '.join(
             f'{_GRADE_EMOJI[i["grade"]]}{t}({i["grade"]})' for t, i in sorted(items)
         ) or '없음'
 
-    date_part = filename[:10] if filename else ''
     lines = [
-        f'📋 <b>주간 기법 파일</b>',
-        f'<code>{filename}</code>',
-        f'기준일: {date_part}  총 {len(watchlist)}종목',
+        f'📋 <b>주간 기법</b>  {WEEKLY_TITLE}',
+        f'기준일: {WEEKLY_DATE}  총 {len(WATCHLIST)}종목',
         '',
         f'🔵🟢 <b>진입 검토</b> ({len(go)}종목)',
         _fmt(go),
@@ -281,14 +266,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ticker = parts[0]
     grade_input = parts[1].lower() if len(parts) > 1 else None
 
-    # 등급 우선순위: 직접 입력 > 주간 기법 파일 > calc.py TICKER_GRADE
+    # 등급 우선순위: 직접 입력 > weekly_config > calc.py TICKER_GRADE
     if grade_input and _GRADE_MAP.get(grade_input):
         grade = _GRADE_MAP[grade_input]
     else:
-        # 주간 기법 파일에서 조회
-        loop = asyncio.get_running_loop()
-        weekly, _ = await loop.run_in_executor(None, load_latest_watchlist)
-        weekly_info = weekly.get(ticker)
+        weekly_info = WATCHLIST.get(ticker)
         grade = (weekly_info['grade'] if weekly_info else None) or TICKER_GRADE.get(ticker)
 
     if not grade:

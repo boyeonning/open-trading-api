@@ -55,27 +55,35 @@ GRADE_CONFIG: dict[str, dict] = {
     },
 }
 
-# ── TICKER_GRADE: 매주 HTML 기법표 등급 컬럼 기준으로 업데이트 ──────────────
+# ── TICKER_GRADE: weekly_config.WATCHLIST 등급 기준 + 비감시 종목 보조 ──────
+# 매주 weekly_config.py 갱신 시 이 테이블도 함께 업데이트
 TICKER_GRADE: dict[str, str] = {
-    # A등급 (진입 −3%)
-    'UPRO': 'A', 'SSO':  'A', 'UWM':  'A', 'FAS':  'A',
-    'TNA':  'A', 'ERX':  'A', 'FNGU': 'A', 'YINN': 'A',
-    'ORCX': 'A', 'BABU': 'A',
-    'AGQ':  'A', 'UCO':  'A', 'TMF':  'A', 'TYD':  'A', 'YCL':  'A',
-    # B등급 (진입 −4%)
-    'QLD':  'B', 'DRN':  'B', 'LABU': 'B', 'DPST': 'B', 'NAIL': 'B',
-    'NVDL': 'B', 'AAPU': 'B', 'MSFU': 'B', 'AMZU': 'B', 'SOFA': 'B',
-    'BOIL': 'B', 'BITX': 'B', 'XXRP': 'B',
-    # C등급 (진입 −5%)
-    'TQQQ': 'C', 'AVL':  'C', 'PTIR': 'C', 'GGLL': 'C', 'OKLL': 'C',
-    'ETHU': 'C',
-    # D등급 (진입 −6%)
-    'USD':  'D', 'TECL': 'D', 'ROBN': 'D',
-    # E등급 (진입 −7%)
-    'SOXL': 'E', 'TSLL': 'E', 'ARMG': 'E', 'TSMX': 'E',
-    'METU': 'E', 'MUU':  'E', 'ASMU': 'E', 'SMCX': 'E',
-    'MRVU': 'E', 'VRTL': 'E', 'CSEX': 'E', 'SOLT': 'E',
-    'MSTX': 'E', 'CONL': 'E', 'SPCH': 'E',
+    # A등급 (진입 −3%) — 7월 2주차 기준
+    'UPRO': 'A', 'SSO':  'A', 'QLD':  'A', 'FNGU': 'A', 'AAPU': 'A',
+    'GGLL': 'A', 'TMF':  'A',
+    # 감시 외 A등급
+    'UWM':  'A', 'FAS':  'A', 'TNA':  'A', 'ERX':  'A',
+    'YINN': 'A', 'ORCX': 'A', 'BABU': 'A', 'TYD':  'A', 'YCL':  'A',
+    # B등급 (진입 −4%) — 7월 2주차 기준
+    'TQQQ': 'B', 'NVDL': 'B', 'PTIR': 'B', 'MSTX': 'B', 'UCO':  'B',
+    'BITX': 'B',
+    # 감시 외 B등급
+    'DRN':  'B', 'LABU': 'B', 'DPST': 'B', 'NAIL': 'B',
+    'MSFU': 'B', 'AMZU': 'B', 'SOFA': 'B', 'BOIL': 'B', 'XXRP': 'B',
+    # C등급 (진입 −5%) — 7월 2주차 기준
+    'TECL': 'C', 'AVL':  'C', 'ASMU': 'C', 'ETHU': 'C', 'AGQ':  'C',
+    # 감시 외 C등급
+    'OKLL': 'C',
+    # D등급 (진입 −6%) — 7월 2주차 기준
+    'TSLL': 'D',
+    # 감시 외 D등급
+    'USD':  'D', 'ROBN': 'D',
+    # E등급 (진입 −7%) — 7월 2주차 기준
+    'SOXL': 'E', 'MRVU': 'E',
+    # 감시 외 E등급
+    'ARMG': 'E', 'TSMX': 'E', 'METU': 'E', 'MUU':  'E',
+    'SMCX': 'E', 'VRTL': 'E', 'CSEX': 'E', 'SOLT': 'E',
+    'CONL': 'E', 'SPCH': 'E',
 }
 
 CLUSTERS: dict[str, list[str]] = {
@@ -151,7 +159,8 @@ def get_ticker_cluster(ticker: str) -> Optional[str]:
 def calculate_buy_plan(close_price: float, grade: str,
                        vix: Optional[float] = None,
                        below_50ma: bool = False,
-                       below_200ma: bool = False) -> dict:
+                       below_200ma: bool = False,
+                       entry_pct_override: Optional[float] = None) -> dict:
     """
     1~5차 매수가, 평단, 목표가, 손절가 계산.
 
@@ -159,10 +168,13 @@ def calculate_buy_plan(close_price: float, grade: str,
       1차: 전날 종가 × (1 − entry_pct%)
       N차(N≥2): 직전 평단 × (1 − add_pct%)
     목표·손절: 각 차수별 평단 기준
+
+    entry_pct_override: weekly_config의 종목별 진입 % 강제 적용 (None이면 등급 기본값)
     """
     cfg = GRADE_CONFIG[grade]
     vix_adj = 1.0 if (vix is not None and 22 <= vix < 30) else 0.0
-    entry_pct = cfg['entry_pct'] + vix_adj
+    base_entry = entry_pct_override if entry_pct_override is not None else cfg['entry_pct']
+    entry_pct = base_entry + vix_adj
     add_pct = cfg['add_pct']
     target_pcts = cfg['target_pcts']
     stop_pct = cfg['stop_pct']
