@@ -68,6 +68,34 @@ async def cmd_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(format_list_message(), parse_mode='HTML')
 
 
+async def cmd_alert(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """/alert on|off — 자동 알림 구독/해제"""
+    chat_id = update.effective_chat.id
+    chats: set = context.bot_data.setdefault('alert_chats', set())
+
+    arg = context.args[0].lower() if context.args else None
+
+    if arg == 'on':
+        chats.add(chat_id)
+        await update.message.reply_text(
+            '🔔 <b>자동 알림 ON</b>\n'
+            '미국 장중(평일 KST 23:00~06:00) 5분마다 체크하여\n'
+            '진입가 도달 또는 3% 이내 근접 시 알림을 보내드립니다.',
+            parse_mode='HTML',
+        )
+    elif arg == 'off':
+        chats.discard(chat_id)
+        await update.message.reply_text('🔕 자동 알림 OFF')
+    else:
+        status = '🔔 ON' if chat_id in chats else '🔕 OFF'
+        await update.message.reply_text(
+            f'자동 알림 상태: <b>{status}</b>\n\n'
+            f'/alert on  — 알림 시작\n'
+            f'/alert off — 알림 중단',
+            parse_mode='HTML',
+        )
+
+
 async def cmd_scan(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """전 종목 50일/200일선 위치 스캔"""
     wait = await update.message.reply_text('🔍 전 종목 스캔 중... (잠시 대기)', parse_mode='HTML')
