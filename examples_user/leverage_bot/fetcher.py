@@ -35,10 +35,13 @@ def _get_excd(ticker: str) -> str:
 # ──────────────────────────────────────────────────────────
 #  KIS API로 전날 종가 조회
 # ──────────────────────────────────────────────────────────
-def _fetch_via_kis(ticker: str) -> tuple[float, str]:
+def _fetch_via_kis(ticker: str) -> tuple[float, float, str]:
     """
-    KIS 해외주식 현재체결가 API → base(기준가 = 전날 종가) 반환
-    auth() 호출 선행 필요
+    KIS 해외주식 현재체결가 API → (현재가, 전일종가, 날짜) 반환
+    Returns:
+        (last, base, date_str)
+        last  = 현재가 (체결가)
+        base  = 기준가 (전날 종가)
     """
     import kis_auth as ka
     from api.overseas_stock_functions import price as kis_price
@@ -51,20 +54,24 @@ def _fetch_via_kis(ticker: str) -> tuple[float, str]:
         raise ValueError(f"KIS API: {ticker} 데이터 없음")
 
     row = df.iloc[0]
-
-    # base = 기준가(전날 종가), 없으면 last(현재가) 사용
-    if 'base' in row and row['base'] not in ('', None, '0', 0):
-        close = float(row['base'])
-    elif 'last' in row and row['last'] not in ('', None, '0', 0):
-        close = float(row['last'])
-    else:
-        raise ValueError(f"KIS API: {ticker} 유효한 가격 없음 → {row.to_dict()}")
-
-    # 날짜: KIS 응답에 t_xhms(시각) 또는 없으면 오늘
     date_str = datetime.now().strftime('%Y-%m-%d')
 
-    logger.info(f"KIS API 성공: {ticker} ${close:.2f} (excd={excd})")
-    return close, date_str
+    def _to_float(val) -> Optional[float]:
+        return float(val) if val not in ('', None, '0', 0) else None
+
+    last = _to_float(row.get('last'))
+    base = _to_float(row.get('base'))
+
+    if last is None and base is None:
+        raise ValueError(f"KIS API: {ticker} 유효한 가격 없음 → {row.to_dict()}")
+
+    # 어느 쪽이든 없으면 서로 대체
+    last = last or base
+    base = base or last
+
+    logger.warning(f"KIS 전체 응답 [{ticker}]: {row.to_dict()}")
+    logger.info(f"KIS 현재체결가: {ticker} last(현재가)=${last:.2f} base(기준가)=${base:.2f}")
+    return last, base, date_str
 
 
 # ──────────────────────────────────────────────────────────
@@ -101,11 +108,12 @@ def fetch_prev_close(ticker: str) -> tuple[float, str]:
     """
     전날 종가 조회 — KIS API 우선, 실패 시 Yahoo Finance 폴백.
     Returns:
-        (close_price, date_str)
+        (prev_close, date_str)
     """
     ticker = ticker.upper()
     try:
-        return _fetch_via_kis(ticker)
+        _last, base, date_str = _fetch_via_kis(ticker)
+        return base, date_str
     except Exception as e:
         logger.warning(f"KIS API 실패 ({ticker}): {e} → Yahoo Finance 폴백")
         return _fetch_via_yahoo(ticker)
@@ -119,6 +127,58 @@ def fetch_vix() -> Optional[float]:
     except Exception as e:
         logger.warning(f"VIX 조회 실패: {e}")
         return None
+
+
+def fetch_ticker_snapshot(ticker: str) -> Optional[dict]:
+    """현재가(KIS last) + 전일종가(Yahoo valid[-1]) 조회.
+
+    전일종가는 fetch_prev_close의 Yahoo 폴백과 동일한 소스(valid[-1])를 사용해
+    handle_message와 /check 간 가격 일관성을 보장한다.
+
+    Returns:
+        {current_price, prev_close, prev_date}  또는 None
+    """
+    ticker = ticker.upper()
+
+    # ── 전일종가: Yahoo valid[-1] ─────────────────────────
+    # fetch_prev_close Yahoo 폴백과 동일한 소스 → handle_message와 일치
+    prev_close = None
+    prev_date  = None
+    valid      = []
+    try:
+        url = f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}"
+        resp = requests.get(url, params={'interval': '1d', 'range': '5d'},
+                            headers={'User-Agent': 'Mozilla/5.0'}, timeout=10)
+        resp.raise_for_status()
+        result = resp.json()['chart']['result'][0]
+        valid  = [(t, c) for t, c in zip(result['timestamp'],
+                   result['indicators']['quote'][0]['close']) if c is not None]
+        if valid:
+            prev_close = valid[-1][1]
+            prev_date  = datetime.fromtimestamp(valid[-1][0]).strftime('%Y-%m-%d')
+    except Exception as e:
+        logger.warning(f"{ticker} Yahoo 전일종가 조회 실패: {e}")
+
+    if prev_close is None:
+        return None
+
+    # ── 현재가: KIS last (실시간 체결가) ──────────────────
+    current = None
+    try:
+        last, _base, _date = _fetch_via_kis(ticker)
+        current = last
+        logger.info(f"KIS 현재가: {ticker} ${current:.2f}  Yahoo 전일종가: ${prev_close:.2f}")
+    except Exception as e:
+        logger.warning(f"{ticker} KIS 현재가 실패: {e} → Yahoo 최근 종가 사용")
+
+    # KIS 실패 시 Yahoo valid[-1]을 현재가로 (장 마감 후에도 최근 종가 표시)
+    if current is None:
+        current = valid[-1][1] if valid else None
+
+    if current is None:
+        return None
+
+    return {'current_price': current, 'prev_close': prev_close, 'prev_date': prev_date}
 
 
 def fetch_ma_status(ticker: str) -> tuple[bool, bool]:

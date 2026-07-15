@@ -34,10 +34,15 @@ INVESTOR_CODES = {
     '기관':   '2',
 }
 
-# 눌림목 기준
-PULLBACK_MIN_PCT = -15.0   # 5일 고점 대비 최대 하락폭
-PULLBACK_MAX_PCT =  -1.0   # 5일 고점 대비 최소 하락폭
-PULLBACK_MIN_CONSEC_DAYS = 3  # 연속 수급 최소 일수
+# 양음양 기준
+YANGUMYANG_MIN_RISE  =  5.0   # 전일 장대양봉 최소 등락률
+YANGUMYANG_MAX_RISE  = 20.0   # 전일 장대양봉 최대 등락률 (초과 시 수익실현 물량 우려)
+YANGUMYANG_VOL_RATIO =  0.6   # 오늘 거래량이 전일의 이 비율 이하여야 함
+YANGUMYANG_MA5_GAP   = -5.0   # MA5 대비 최대 이탈폭 (이 이상 이탈 시 제외)
+
+# 동전주/소형주 제외 기준
+MIN_PRICE        = 3_000      # 최소 주가 (원) — 3,000원 미만 제외
+MIN_TRADE_AMOUNT = 50_000_000_000  # 전일 최소 거래대금 (원) — 500억 미만 제외
 
 # ── KIS API 직접 호출 ──────────────────────────────────────
 def _fetch_today_top(market: str, investor: str, top_n: int) -> list[dict]:
@@ -114,7 +119,7 @@ def _fetch_daily_flow(stock_code: str, today_str: str) -> list[dict]:
 
 
 def _fetch_daily_price(stock_code: str) -> list[dict]:
-    """FHKST01010400 — 일별 시가/고가/저가/종가 (최근 30거래일, 최신순)"""
+    """FHKST01010400 — 일별 시가/고가/저가/종가/거래량/등락률 (최근 30거래일, 최신순)"""
     params = {
         "FID_COND_MRKT_DIV_CODE": "J",
         "FID_INPUT_ISCD":         stock_code,
@@ -134,11 +139,19 @@ def _fetch_daily_price(stock_code: str) -> list[dict]:
                 return int(v or '0')
             except (ValueError, TypeError):
                 return 0
+        def _float(v):
+            try:
+                return float(v or '0')
+            except (ValueError, TypeError):
+                return 0.0
         result.append({
             '날짜': row.get('stck_bsop_date', ''),
+            '시가': _int(row.get('stck_oprc', '0')),
             '종가': _int(row.get('stck_clpr', '0')),
             '고가': _int(row.get('stck_hgpr', '0')),
             '저가': _int(row.get('stck_lwpr', '0')),
+            '거래량': _int(row.get('acml_vol', '0')),
+            '등락률': _float(row.get('prdy_ctrt', '0')),
         })
     return result
 
@@ -169,35 +182,72 @@ def _check_consecutive(daily: list[dict], days: int, investor: str) -> Optional[
     }
 
 
-def _check_pullback(price_data: list[dict]) -> Optional[dict]:
+def _check_yangumyang(price_data: list[dict]) -> Optional[dict]:
     """
-    눌림목 조건:
-      - 최근 5일 고점 대비 -3% ~ -10% (조정 중)
-      - 현재가 > 20일선 (상승 추세 유지)
+    양음양 Pattern 1 조건 (핀업스탁 기법):
+      전일: 등락률 +5~+20% 장대양봉 + 평균 대비 대량거래
+      오늘: 음봉(종가<시가) + MA5 이탈 안함 + 거래량이 전일의 60% 이하
+      현재가가 MA5 -5% 이내
     """
-    if len(price_data) < 20:
+    # MA5 계산을 위해 최소 6일치 필요 (오늘 + 전일 포함 5일)
+    if len(price_data) < 6:
         return None
 
-    current     = price_data[0]['종가']
-    high_5d     = max(d['고가'] for d in price_data[:5])
-    ma20        = sum(d['종가'] for d in price_data[:20]) / 20
+    today     = price_data[0]
+    yesterday = price_data[1]
 
-    if current <= 0 or high_5d <= 0:
+    # MA5: 오늘 포함 최근 5거래일 종가 평균
+    ma5 = sum(d['종가'] for d in price_data[:5]) / 5
+
+    # ① 최소 주가 필터 (동전주 제외)
+    if today['종가'] < MIN_PRICE:
         return None
 
-    pullback_pct = (current - high_5d) / high_5d * 100  # 음수=하락
-
-    # 눌림 범위 체크
-    if not (PULLBACK_MIN_PCT <= pullback_pct <= PULLBACK_MAX_PCT):
+    # ② 전일 거래대금 필터 (소형주 제외): 전일종가 × 전일거래량
+    prev_trade_amount = yesterday['종가'] * yesterday['거래량']
+    if prev_trade_amount < MIN_TRADE_AMOUNT:
         return None
 
-    ma20_gap_pct = (current - ma20) / ma20 * 100
+    # ③ 전일 장대양봉: +5% ~ +20%
+    prev_rate = yesterday.get('등락률', 0.0)
+    if not (YANGUMYANG_MIN_RISE <= prev_rate <= YANGUMYANG_MAX_RISE):
+        return None
+
+    # ④ 전일 대량거래: 직전 5일(price_data[1:6]) 평균 거래량 대비 1.5배 이상
+    prev_5d_vols = [d['거래량'] for d in price_data[1:6]]
+    avg_vol = sum(prev_5d_vols) / len(prev_5d_vols) if prev_5d_vols else 0
+    if avg_vol > 0 and yesterday['거래량'] < avg_vol * 1.5:
+        return None
+
+    today_close = today['종가']
+    today_open  = today['시가']
+
+    if today_close <= 0 or today_open <= 0:
+        return None
+
+    # ⑤ 오늘 음봉: 종가 < 시가
+    if today_close >= today_open:
+        return None
+
+    # ⑥ 오늘 거래량이 전일의 60% 이하 (핵심 조건)
+    vol_ratio = today['거래량'] / yesterday['거래량'] if yesterday['거래량'] > 0 else 1.0
+    if vol_ratio > YANGUMYANG_VOL_RATIO:
+        return None
+
+    # ⑦ 현재가가 MA5 기준 -5% 이내 (너무 많이 이탈하면 제외)
+    ma5_gap_pct = (today_close - ma5) / ma5 * 100
+    if ma5_gap_pct < YANGUMYANG_MA5_GAP:
+        return None
 
     return {
-        '눌림률':       pullback_pct,
-        '5일고점':      high_5d,
-        'MA20':         round(ma20),
-        'MA20괴리율':   ma20_gap_pct,
+        '전일등락률':  prev_rate,
+        'MA5':         round(ma5),
+        'MA5괴리율':   ma5_gap_pct,
+        '거래량비율':  vol_ratio,
+        '전일거래량':  yesterday['거래량'],
+        '오늘거래량':  today['거래량'],
+        '전일고가':    yesterday['고가'],
+        '전일저가':    yesterday['저가'],
     }
 
 
@@ -258,51 +308,79 @@ def fetch_consecutive_flow(
     return results
 
 
-def fetch_pullback_flow(market: str = '전체', top_n: int = 30) -> list[dict]:
+def _load_all_stock_codes(market: str) -> list[tuple[str, str]]:
+    """마스터 파일에서 6자리 숫자 종목코드 전체 로드 → [(코드, 종목명), ...]"""
+    _load_market_codes()  # 캐시 초기화 겸용
+    _STOCKS_DIR = os.path.join(os.path.dirname(_EXAMPLES), 'stocks_info')
+
+    if market == '코스피':
+        fnames = ['kospi_code_part1.tmp']
+    elif market == '코스닥':
+        fnames = ['kosdaq_code_part1.tmp']
+    else:
+        fnames = ['kospi_code_part1.tmp', 'kosdaq_code_part1.tmp']
+
+    stocks = []
+    for fname in fnames:
+        path = os.path.join(_STOCKS_DIR, fname)
+        if not os.path.exists(path):
+            continue
+        with open(path, encoding='utf-8') as f:
+            for line in f:
+                parts = line.split(',')
+                code = parts[0].strip()
+                name = parts[2].strip() if len(parts) >= 3 else ''
+                # 6자리 숫자코드만 (펀드/ETN 등 제외)
+                if len(code) == 6 and code.isdigit():
+                    stocks.append((code, name))
+    return stocks
+
+
+def fetch_pullback_flow(market: str = '코스피') -> list[dict]:
     """
-    눌림목 스크리너:
-      수급(기관 or 외국인 5일+ 연속) + 눌림(5일 고점 -3~-10%) + 추세(MA20 위)
+    양음양 기법 Pattern 1 스크리너 (핀업스탁 기법 기반)
+    전 종목 스캔 — 코스피 약 1,800개 / 코스닥 약 1,800개
+
+    조건:
+      - 전일: +5~20% 장대양봉 + 평균 거래량 1.5배 이상 대량거래
+      - 오늘: 음봉 + 거래량 전일의 60% 이하 + MA5 -5% 이내
     """
-    candidates = _fetch_today_top(market, '전체', top_n)
-    if not candidates:
+    stocks = _load_all_stock_codes(market)
+    if not stocks:
         return []
 
-    today_str = datetime.today().strftime('%Y%m%d')
+    logger.info(f"양음양 스캔 시작: {market} {len(stocks)}개 종목")
 
-    def _worker(stock: dict) -> Optional[dict]:
-        code = stock['코드']
-        if not code:
-            return None
+    def _worker(code: str, name: str) -> Optional[dict]:
         try:
-            time.sleep(0.1)
-            # ① 수급 체크
-            daily_flow = _fetch_daily_flow(code, today_str)
-            consec = _check_consecutive(daily_flow, PULLBACK_MIN_CONSEC_DAYS, '전체')
-            if not consec:
-                return None
-
-            time.sleep(0.1)
-            # ② 가격/눌림 체크
+            time.sleep(0.05)
             price_data = _fetch_daily_price(code)
-            pullback = _check_pullback(price_data)
-            if not pullback:
+            pattern = _check_yangumyang(price_data)
+            if not pattern:
                 return None
-
-            return {**stock, **consec, **pullback}
+            today = price_data[0]
+            return {
+                '코드':   code,
+                '종목명': name,
+                '현재가': today['종가'],
+                '등락률': today['등락률'],
+                **pattern,
+            }
         except Exception as e:
-            logger.warning(f"{code} 눌림목 조회 실패: {e}")
+            logger.debug(f"{code} 양음양 조회 실패: {e}")
         return None
 
     results = []
-    with ThreadPoolExecutor(max_workers=3) as executor:
-        futures = {executor.submit(_worker, s): s for s in candidates}
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        futures = {executor.submit(_worker, c, n): c for c, n in stocks}
         for future in as_completed(futures):
             r = future.result()
             if r:
                 results.append(r)
 
-    # 눌림률 작은 순 (덜 빠진 것 = 더 안전한 눌림)
-    results.sort(key=lambda r: r['눌림률'], reverse=True)
+    # MA5 괴리율 높은 순
+    results.sort(key=lambda r: r['MA5괴리율'], reverse=True)
+    logger.info(f"양음양 스캔 완료: {len(results)}개 해당")
     return results
 
 
@@ -420,31 +498,39 @@ def format_consecutive_message(rows: list[dict], days: int, market: str, investo
 
 
 def format_pullback_message(rows: list[dict], market: str) -> str:
+    desc = (
+        f'전일 +{YANGUMYANG_MIN_RISE:.0f}~{YANGUMYANG_MAX_RISE:.0f}% 장대양봉 + '
+        f'오늘 음봉·거래량↓{int(YANGUMYANG_VOL_RATIO*100)}% + MA5 {YANGUMYANG_MA5_GAP:.0f}% 이내'
+    )
     if not rows:
         return (
-            f'📊 <b>{market} 눌림목 수급 종목</b>\n\n'
+            f'📊 <b>{market} 양음양 눌림목</b>\n\n'
             '해당 종목 없음\n'
-            f'<i>조건: 3일 연속 수급 + 5일고점 대비 -1~-15% 조정</i>'
+            f'<i>{desc}</i>'
         )
     lines = [
-        f'📊 <b>{market} 눌림목 수급 종목</b>',
-        f'<i>3일 연속수급 + 5일고점 -{abs(PULLBACK_MAX_PCT):.0f}~{abs(PULLBACK_MIN_PCT):.0f}% 조정 · {len(rows)}개</i>',
+        f'📊 <b>{market} 양음양 눌림목</b>',
+        f'<i>{desc} · {len(rows)}개</i>',
     ]
     for i, r in enumerate(rows, 1):
-        tags = []
-        if r.get('연속_외국인'):
-            tags.append('외국인✅')
-        if r.get('연속_기관'):
-            tags.append('기관✅')
+        ma5_gap  = r['MA5괴리율']
+        vol_pct  = r['거래량비율'] * 100
+        prev_vol = r['전일거래량']
+        today_vol = r['오늘거래량']
 
-        pullback = r['눌림률']
-        ma20_gap = r['MA20괴리율']
+        def _vol(v):
+            if v >= 10_000_000:
+                return f'{v/10_000_000:.1f}천만주'
+            elif v >= 1_000_000:
+                return f'{v/1_000_000:.1f}백만주'
+            elif v >= 10_000:
+                return f'{v/10_000:.0f}만주'
+            return f'{v:,}주'
 
         lines.append(
             f'\n{i}. <b>{r["종목명"]}</b> <code>{r["코드"]}</code> <i>{_market_tag(r["코드"])}</i>\n'
             f'   {r["현재가"]:,}원 {_rate_str(r["등락률"])}\n'
-            f'   {"  ".join(tags)}\n'
-            f'   5일고점 대비 <b>{pullback:.1f}%</b>  MA20 대비 +{ma20_gap:.1f}%\n'
-            f'   MA20 {r["MA20"]:,}원  5일고점 {r["5일고점"]:,}원'
+            f'   전일 <b>+{r["전일등락률"]:.1f}%</b> 장대양봉  MA5 {ma5_gap:+.1f}%  MA5 {r["MA5"]:,}원\n'
+            f'   거래량 전일 {_vol(prev_vol)} → 오늘 {_vol(today_vol)} (<b>{vol_pct:.0f}%</b>)'
         )
     return '\n'.join(lines)

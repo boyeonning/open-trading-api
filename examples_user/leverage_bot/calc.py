@@ -1,12 +1,15 @@
-"""레버리지 ETF 투자기법 v4.5 — 등급/계산 데이터"""
+"""레버리지 ETF 투자기법 v5.0 — 등급/계산 데이터
+등급 체계: A(−3%) / B(−4%) / C(−5%) / D(−6%) / E(−7%)
+매주 HTML 기법표 기준으로 TICKER_GRADE 업데이트
+"""
 from typing import Optional
 
 # ──────────────────────────────────────────────────────────
-#  등급별 운용 파라미터
+#  등급별 운용 파라미터 (A~E)
 # ──────────────────────────────────────────────────────────
 GRADE_CONFIG: dict[str, dict] = {
-    'tier1_stable': {
-        'name': '1등급 안정형',
+    'A': {
+        'name': 'A등급 (−3%)',
         'entry_pct': 3.0,
         'add_pct': 4.0,
         'target_pcts': [4.0, 6.0, 8.0],
@@ -14,17 +17,17 @@ GRADE_CONFIG: dict[str, dict] = {
         'hold_days': 5,
         'amounts': [100, 150, 150, 200, 200],
     },
-    'tier1_volatile': {
-        'name': '1등급 변동형',
-        'entry_pct': 4.5,
+    'B': {
+        'name': 'B등급 (−4%)',
+        'entry_pct': 4.0,
         'add_pct': 5.0,
         'target_pcts': [5.0, 7.0, 9.0],
         'stop_pct': 7.0,
         'hold_days': 4,
         'amounts': [100, 150, 150, 200, 200],
     },
-    'tier2': {
-        'name': '2등급 핵심 단일주',
+    'C': {
+        'name': 'C등급 (−5%)',
         'entry_pct': 5.0,
         'add_pct': 5.0,
         'target_pcts': [5.0, 7.0, 10.0],
@@ -32,8 +35,8 @@ GRADE_CONFIG: dict[str, dict] = {
         'hold_days': 4,
         'amounts': [100, 150, 150, 200, 200],
     },
-    'tier3': {
-        'name': '3등급 특수·고위험',
+    'D': {
+        'name': 'D등급 (−6%)',
         'entry_pct': 6.0,
         'add_pct': 7.0,
         'target_pcts': [6.0, 8.0, 10.0],
@@ -41,29 +44,38 @@ GRADE_CONFIG: dict[str, dict] = {
         'hold_days': 4,
         'amounts': [100, 150, 150, 200, 200],
     },
+    'E': {
+        'name': 'E등급 (−7%)',
+        'entry_pct': 7.0,
+        'add_pct': 8.0,
+        'target_pcts': [7.0, 9.0, 12.0],
+        'stop_pct': 8.0,
+        'hold_days': 3,
+        'amounts': [100, 150, 150, 200, 200],
+    },
 }
 
+# ── TICKER_GRADE: 매주 HTML 기법표 등급 컬럼 기준으로 업데이트 ──────────────
 TICKER_GRADE: dict[str, str] = {
-    # 1등급 안정형
-    'UPRO': 'tier1_stable', 'SSO': 'tier1_stable', 'QLD': 'tier1_stable',
-    'USD':  'tier1_stable', 'UWM': 'tier1_stable', 'FAS': 'tier1_stable',
-    'DRN':  'tier1_stable',
-    # 1등급 변동형
-    'TQQQ': 'tier1_volatile', 'SOXL': 'tier1_volatile', 'TECL': 'tier1_volatile',
-    'TNA':  'tier1_volatile', 'LABU': 'tier1_volatile', 'DPST': 'tier1_volatile',
-    'ERX':  'tier1_volatile', 'NAIL': 'tier1_volatile', 'FNGU': 'tier1_volatile',
-    'YINN': 'tier1_volatile',
-    # 2등급
-    'NVDL': 'tier2', 'TSLL': 'tier2', 'AVL':  'tier2', 'ARMG': 'tier2',
-    'TSMX': 'tier2', 'PTIR': 'tier2', 'GGLL': 'tier2', 'ORCX': 'tier2',
-    'ROBN': 'tier2', 'MRVU': 'tier2', 'VRTL': 'tier2', 'AAPU': 'tier2',
-    'METU': 'tier2', 'MSFU': 'tier2', 'AMZU': 'tier2', 'MUU':  'tier2',
-    'ASMU': 'tier2', 'SMCX': 'tier2', 'CSEX': 'tier2', 'SOFA': 'tier2',
-    'BABU': 'tier2', 'OKLL': 'tier2',
-    # 3등급
-    'AGQ':  'tier3', 'UCO':  'tier3', 'BOIL': 'tier3', 'TMF':  'tier3',
-    'TYD':  'tier3', 'YCL':  'tier3', 'BITX': 'tier3', 'ETHU': 'tier3',
-    'XXRP': 'tier3', 'SOLT': 'tier3', 'MSTX': 'tier3', 'CONL': 'tier3',
+    # A등급 (진입 −3%)
+    'UPRO': 'A', 'SSO':  'A', 'UWM':  'A', 'FAS':  'A',
+    'TNA':  'A', 'ERX':  'A', 'FNGU': 'A', 'YINN': 'A',
+    'ORCX': 'A', 'BABU': 'A',
+    'AGQ':  'A', 'UCO':  'A', 'TMF':  'A', 'TYD':  'A', 'YCL':  'A',
+    # B등급 (진입 −4%)
+    'QLD':  'B', 'DRN':  'B', 'LABU': 'B', 'DPST': 'B', 'NAIL': 'B',
+    'NVDL': 'B', 'AAPU': 'B', 'MSFU': 'B', 'AMZU': 'B', 'SOFA': 'B',
+    'BOIL': 'B', 'BITX': 'B', 'XXRP': 'B',
+    # C등급 (진입 −5%)
+    'TQQQ': 'C', 'AVL':  'C', 'PTIR': 'C', 'GGLL': 'C', 'OKLL': 'C',
+    'ETHU': 'C',
+    # D등급 (진입 −6%)
+    'USD':  'D', 'TECL': 'D', 'ROBN': 'D',
+    # E등급 (진입 −7%)
+    'SOXL': 'E', 'TSLL': 'E', 'ARMG': 'E', 'TSMX': 'E',
+    'METU': 'E', 'MUU':  'E', 'ASMU': 'E', 'SMCX': 'E',
+    'MRVU': 'E', 'VRTL': 'E', 'CSEX': 'E', 'SOLT': 'E',
+    'MSTX': 'E', 'CONL': 'E', 'SPCH': 'E',
 }
 
 CLUSTERS: dict[str, list[str]] = {
@@ -299,10 +311,10 @@ def get_warnings(ticker: str, grade: str,
             warnings.append(f'✅ VIX {vix:.1f} ≤ 22 — 정상 운용')
 
     # 등급별 특이사항
-    if grade == 'tier3':
-        warnings.append('⚠️ 3등급 특수·고위험 — 주력 아님, 1슬롯 한도')
-    if grade == 'tier2':
-        warnings.append('⚠️ 2등급 단일주 — 기초자산 실적 발표 전후 진입 금지')
+    if grade in ('D', 'E'):
+        warnings.append('⚠️ D/E등급 고위험 — 주력 아님, 1슬롯 한도')
+    if grade == 'C':
+        warnings.append('⚠️ C등급 단일주 — 기초자산 실적 발표 전후 진입 금지')
 
     # 종목 특이사항
     if ticker in SPECIAL_WARNINGS:

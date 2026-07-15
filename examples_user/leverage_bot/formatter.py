@@ -15,7 +15,7 @@ def _cp(x: float) -> str:
 
 
 def _grade_emoji(grade: str) -> str:
-    return {'tier1_stable': '🔵', 'tier1_volatile': '🟠', 'tier2': '🟡', 'tier3': '🔴'}.get(grade, '⚪')
+    return {'A': '🔵', 'B': '🟢', 'C': '🟡', 'D': '🟠', 'E': '🔴'}.get(grade, '⚪')
 
 
 def _cond_str(vix: Optional[float], below_50ma: bool, below_200ma: bool, vix_adj: float) -> str:
@@ -155,10 +155,11 @@ def format_unknown_ticker(ticker: str) -> str:
     return (
         f'❌ <b>{ticker}</b>는 등록되지 않은 종목입니다.\n\n'
         f'등급을 붙여 입력하면 계산할 수 있습니다:\n'
-        f'<code>{ticker} 1</code>  1등급 안정형\n'
-        f'<code>{ticker} 1v</code>  1등급 변동형\n'
-        f'<code>{ticker} 2</code>  2등급 단일주\n'
-        f'<code>{ticker} 3</code>  3등급 고위험\n\n'
+        f'<code>{ticker} a</code>  A등급 (진입 −3%)\n'
+        f'<code>{ticker} b</code>  B등급 (진입 −4%)\n'
+        f'<code>{ticker} c</code>  C등급 (진입 −5%)\n'
+        f'<code>{ticker} d</code>  D등급 (진입 −6%)\n'
+        f'<code>{ticker} e</code>  E등급 (진입 −7%)\n\n'
         f'<b>등록 종목 ({len(TICKER_GRADE)}개):</b>\n'
         f'<code>{tickers}</code>'
     )
@@ -201,18 +202,21 @@ def format_help_message() -> str:
 
 
 def format_list_message() -> str:
-    t1s = [t for t, g in TICKER_GRADE.items() if g == 'tier1_stable']
-    t1v = [t for t, g in TICKER_GRADE.items() if g == 'tier1_volatile']
-    t2  = [t for t, g in TICKER_GRADE.items() if g == 'tier2']
-    t3  = [t for t, g in TICKER_GRADE.items() if g == 'tier3']
+    ga = [t for t, g in TICKER_GRADE.items() if g == 'A']
+    gb = [t for t, g in TICKER_GRADE.items() if g == 'B']
+    gc = [t for t, g in TICKER_GRADE.items() if g == 'C']
+    gd = [t for t, g in TICKER_GRADE.items() if g == 'D']
+    ge = [t for t, g in TICKER_GRADE.items() if g == 'E']
     return (
         '📋 <b>지원 종목 전체 목록</b>\n\n'
-        f'🔵 <b>1등급 안정형</b> ({len(t1s)}개)\n'
-        f'<code>{" ".join(sorted(t1s))}</code>\n\n'
-        f'🟠 <b>1등급 변동형</b> ({len(t1v)}개)\n'
-        f'<code>{" ".join(sorted(t1v))}</code>\n\n'
-        f'🟡 <b>2등급 단일주</b> ({len(t2)}개)\n'
-        f'<code>{" ".join(sorted(t2))}</code>\n\n'
-        f'🔴 <b>3등급 고위험</b> ({len(t3)}개)\n'
-        f'<code>{" ".join(sorted(t3))}</code>'
+        f'🔵 <b>A등급</b> 진입 −3%  ({len(ga)}개)\n'
+        f'<code>{" ".join(sorted(ga))}</code>\n\n'
+        f'🟢 <b>B등급</b> 진입 −4%  ({len(gb)}개)\n'
+        f'<code>{" ".join(sorted(gb))}</code>\n\n'
+        f'🟡 <b>C등급</b> 진입 −5%  ({len(gc)}개)\n'
+        f'<code>{" ".join(sorted(gc))}</code>\n\n'
+        f'🟠 <b>D등급</b> 진입 −6%  ({len(gd)}개)\n'
+        f'<code>{" ".join(sorted(gd))}</code>\n\n'
+        f'🔴 <b>E등급</b> 진입 −7%  ({len(ge)}개)\n'
+        f'<code>{" ".join(sorted(ge))}</code>'
     )

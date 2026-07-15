@@ -18,7 +18,7 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from handlers import (
-    cmd_start, cmd_help, cmd_list, cmd_vix, cmd_scan,
+    cmd_start, cmd_help, cmd_list, cmd_vix, cmd_scan, cmd_check, cmd_weekly,
     handle_message, handle_callback,
     handle_addbuy_callback, handle_avg_input, cancel_conv,
     WAITING_AVG,
@@ -57,6 +57,8 @@ def main():
     app.add_handler(CommandHandler('list',   cmd_list))
     app.add_handler(CommandHandler('vix',    cmd_vix))
     app.add_handler(CommandHandler('scan',   cmd_scan))
+    app.add_handler(CommandHandler('check',  cmd_check))
+    app.add_handler(CommandHandler('weekly', cmd_weekly))
     app.add_handler(CommandHandler('flow',   cmd_flow))
     app.add_handler(CallbackQueryHandler(handle_flow_callback, pattern='^flow\\|'))  # 수급 버튼
     app.add_handler(CallbackQueryHandler(handle_callback, pattern='^calc\\|'))       # 시장위치 버튼
