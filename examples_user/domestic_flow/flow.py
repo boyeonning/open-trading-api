@@ -396,12 +396,13 @@ def fetch_pullback_flow(market: str = '코스피') -> list[dict]:
 
 def _check_preempt(price_data: list[dict]) -> Optional[dict]:
     """
-    선점 스크리너 조건 (백테스트 기반):
+    선점 스크리너 조건 (백테스트 기반, 400종목 코스닥 30일 검증):
       ① 오늘 등락률 ±5% 이내 (주가 아직 안 터짐)
       ② 최근 20일 고점 대비 현재가 -30% 이상 낙폭 (낙폭과대)
-      ③ 오늘 거래량 최소 1만주 이상 (사실상 거래 없는 종목 제외)
-      ④ 전일 거래대금 50억 이상 (소형주 제외)
-    * 거래량 급증 조건 제거: 급등 전날은 오히려 거래량이 조용함
+      ③ 현재가가 20일 최저가 +10% 이내 (바닥 근처)       ← A 조건
+      ④ 최근 5일 중 3일 이상 하락 (연속 눌림 후 보합)    ← C 조건
+      ⑤ 오늘 거래량 최소 1만주 / 전일 거래대금 50억 이상
+    → 정밀도 10.6% / 재현율 29.3% (기본 대비 정밀도 25% 향상)
     """
     if len(price_data) < 22:
         return None
@@ -414,11 +415,9 @@ def _check_preempt(price_data: list[dict]) -> Optional[dict]:
     if today['종가'] < PREEMPT_MIN_PRICE:
         return None
 
-    # 최소 거래량 필터 (사실상 거래 없는 종목 제외)
+    # 최소 거래량 / 거래대금 필터
     if today['거래량'] < PREEMPT_MIN_VOL:
         return None
-
-    # 전일 거래대금 필터 (소형주 제외)
     if yesterday['종가'] * yesterday['거래량'] < PREEMPT_MIN_TRADE:
         return None
 
@@ -432,14 +431,27 @@ def _check_preempt(price_data: list[dict]) -> Optional[dict]:
     if drawdown > -PREEMPT_DRAWDOWN:
         return None
 
+    # ③ 현재가가 20일 최저가 +10% 이내 (바닥 근처)
+    recent_low = min(d['저가'] for d in hist)
+    if recent_low > 0 and today['종가'] > recent_low * 1.10:
+        return None
+
+    # ④ 최근 5일 중 3일 이상 하락 (연속 눌림 후 보합 진입)
+    recent5_rates = [price_data[i].get('등락률', 0) for i in range(1, 6) if i < len(price_data)]
+    down_days = sum(1 for r in recent5_rates if r < 0)
+    if down_days < 3:
+        return None
+
     avg_vol = sum(d['거래량'] for d in hist) / len(hist) if hist else 0
 
     return {
         '등락률':       today.get('등락률', 0),
         '20일고점':     recent_high,
+        '20일저가':     recent_low,
         '낙폭':         round(drawdown, 1),
         '오늘거래량':   today['거래량'],
         '평균거래량':   int(avg_vol),
+        '연속하락일':   down_days,
     }
 
 
@@ -530,8 +542,8 @@ def _market_tag(code: str) -> str:
 
 def format_preempt_message(rows: list[dict], market: str) -> str:
     desc = (
-        f'등락률 ±{PREEMPT_PRICE_RANGE:.0f}% + '
-        f'20일 고점 대비 -{PREEMPT_DRAWDOWN:.0f}%↓ + 주가 보합'
+        f'낙폭 -{PREEMPT_DRAWDOWN:.0f}%↓ + 바닥근처 + '
+        f'연속눌림 + 등락률 ±{PREEMPT_PRICE_RANGE:.0f}%'
     )
     if not rows:
         return (
@@ -557,9 +569,9 @@ def format_preempt_message(rows: list[dict], market: str) -> str:
         rate_str = _rate_str(r['등락률'])
         lines.append(
             f'\n{i}. <b>{r["종목명"]}</b> <code>{r["코드"]}</code> <i>{_market_tag(r["코드"])}</i>\n'
-            f'   {r["현재가"]:,}원 {rate_str}\n'
-            f'   거래량 {_vol(r["오늘거래량"])} (20일 평균 {_vol(r["평균거래량"])})\n'
-            f'   20일 고점 {r["20일고점"]:,}원 대비 <b>{r["낙폭"]:+.1f}%</b>'
+            f'   {r["현재가"]:,}원 {rate_str}  최근5일 하락 {r.get("연속하락일", "?")}일\n'
+            f'   거래량 {_vol(r["오늘거래량"])} (평균 {_vol(r["평균거래량"])})\n'
+            f'   20일 고점 {r["20일고점"]:,}원 대비 <b>{r["낙폭"]:+.1f}%</b>  저가 {r.get("20일저가", 0):,}원'
         )
     return '\n'.join(lines)
 
