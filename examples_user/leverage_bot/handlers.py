@@ -45,7 +45,7 @@ def _menu_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
         [
             InlineKeyboardButton('📈 VIX 확인',     callback_data='menu|vix'),
-            InlineKeyboardButton('🔔 자동 알림',    callback_data='menu|alert'),
+            InlineKeyboardButton('🔔 레버리지 알림', callback_data='menu|alert'),
         ],
         [
             InlineKeyboardButton('🇰🇷 수급 조회',   callback_data='menu|flow'),
@@ -423,9 +423,9 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         ]])
         go_count = sum(1 for i in WATCHLIST.values() if i['signal'] in SIGNAL_GO)
         await query.edit_message_text(
-            f'🔔 <b>자동 알림</b>  {status_txt}\n\n'
-            f'시장: {market_txt}  |  모니터링: {go_count}종목\n'
-            f'기준: 진입가 도달 또는 {_NEAR_THRESHOLD:.0f}% 이내\n'
+            f'🔔 <b>미국 레버리지 ETF 자동 알림</b>  {status_txt}\n\n'
+            f'미장: {market_txt}  |  감시 종목: {go_count}개\n'
+            f'조건: 진입가 도달 또는 {_NEAR_THRESHOLD:.0f}% 이내\n'
             f'주기: 5분  |  쿨다운: 30분',
             parse_mode='HTML',
             reply_markup=kb,
