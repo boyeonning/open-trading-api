@@ -44,14 +44,11 @@ def _menu_keyboard() -> InlineKeyboardMarkup:
     """메인 메뉴 인라인 키보드"""
     return InlineKeyboardMarkup([
         [
-            InlineKeyboardButton('📊 진입가 스캔',  callback_data='menu|check'),
             InlineKeyboardButton('📈 VIX 확인',     callback_data='menu|vix'),
-        ],
-        [
             InlineKeyboardButton('🔔 자동 알림',    callback_data='menu|alert'),
-            InlineKeyboardButton('🇰🇷 수급 조회',   callback_data='menu|flow'),
         ],
         [
+            InlineKeyboardButton('🇰🇷 수급 조회',   callback_data='menu|flow'),
             InlineKeyboardButton('🎯 선점 후보',    callback_data='menu|hunt'),
         ],
     ])
