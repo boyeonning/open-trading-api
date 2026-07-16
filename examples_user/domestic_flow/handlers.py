@@ -6,8 +6,8 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 
 from domestic_flow.flow import (
-    fetch_ssangkkuli_flow, fetch_consecutive_flow, fetch_pullback_flow, fetch_preempt_flow,
-    format_ssangkkuli_message, format_consecutive_message, format_pullback_message, format_preempt_message,
+    fetch_ssangkkuli_flow, fetch_consecutive_flow, fetch_pullback_flow,
+    format_ssangkkuli_message, format_consecutive_message, format_pullback_message,
 )
 
 logger = logging.getLogger(__name__)
@@ -63,40 +63,15 @@ async def _run_flow(mode: str, loop) -> str:
             loop.run_in_executor(None, fetch_pullback_flow, '코스피'),
             loop.run_in_executor(None, fetch_pullback_flow, '코스닥'),
         )
-        return (
+        msg = (
             format_pullback_message(kospi_rows, '코스피')
             + '\n\n'
             + format_pullback_message(kosdaq_rows, '코스닥')
         )
+        return msg[:4000] + ('...' if len(msg) > 4000 else '')
 
     return '❌ 알 수 없는 모드'
 
-
-async def cmd_hunt(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """/hunt — 선점 후보 스크리너 (코스피+코스닥 동시)
-    거래량 급증(3배↑) + 주가 보합(±5%) + 낙폭과대(20일 고점 -20%↓)
-    """
-    wait = await update.message.reply_text(
-        '🎯 선점 후보 탐색 중...\n'
-        '<i>전 종목 스캔 중 (약 2~3분 소요)\n'
-        '거래량 3배↑ + 등락률 ±5% + 20일 고점 -20%↓</i>',
-        parse_mode='HTML',
-    )
-    loop = asyncio.get_running_loop()
-    try:
-        kospi_rows, kosdaq_rows = await asyncio.gather(
-            loop.run_in_executor(None, fetch_preempt_flow, '코스피'),
-            loop.run_in_executor(None, fetch_preempt_flow, '코스닥'),
-        )
-        msg = (
-            format_preempt_message(kospi_rows, '코스피')
-            + '\n\n'
-            + format_preempt_message(kosdaq_rows, '코스닥')
-        )
-        await wait.edit_text(msg, parse_mode='HTML')
-    except Exception as e:
-        logger.error(f'선점 스캔 오류: {e}', exc_info=True)
-        await wait.edit_text(f'❌ 선점 스캔 실패: {e}')
 
 
 async def cmd_flow(update: Update, context: ContextTypes.DEFAULT_TYPE):

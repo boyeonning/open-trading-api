@@ -48,8 +48,9 @@ def _menu_keyboard() -> InlineKeyboardMarkup:
             InlineKeyboardButton('🔔 레버리지 알림', callback_data='menu|alert'),
         ],
         [
-            InlineKeyboardButton('🇰🇷 수급 조회',   callback_data='menu|flow'),
-            InlineKeyboardButton('🎯 선점 후보',    callback_data='menu|hunt'),
+            InlineKeyboardButton('🔄 쌍끌이',   callback_data='flow|ssang'),
+            InlineKeyboardButton('📅 5일연속',  callback_data='flow|consec'),
+            InlineKeyboardButton('🕯 양음양',   callback_data='flow|pullback'),
         ],
     ])
 
@@ -70,7 +71,10 @@ def _make_keyboard(ticker: str, grade: str, close: float, date: str,
 #  커맨드 핸들러
 # ──────────────────────────────────────────────────────────
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    logger.warning(f"chat_id: {update.effective_chat.id}")
+    # 시작하는 순간 자동으로 알림 구독 (별도 /alert on 없이)
+    chat_id = update.effective_chat.id
+    context.bot_data.setdefault('alert_chats', set()).add(chat_id)
+    logger.warning(f"chat_id: {chat_id}")
     await update.message.reply_text(
         '📊 <b>LevDip</b>  레버리지 ETF 눌림 매수 도우미\n\n'
         '버튼을 눌러 원하는 기능을 선택하세요.\n'
@@ -383,8 +387,6 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         'vix':    '⏳ VIX 조회 중...',
         'weekly': '',
         'alert':  '',
-        'flow':   '📡 수급 조회 중...',
-        'hunt':   '🎯 선점 후보 탐색 중...\n<i>(전 종목 스캔, 약 2~3분 소요)</i>',
     }
 
     if action == 'weekly':
@@ -503,29 +505,8 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
                 msg = f'📈 <b>VIX</b>  <code>{vix:.2f}</code>  {level}'
             await query.edit_message_text(msg, parse_mode='HTML', reply_markup=_menu_keyboard())
 
-        elif action == 'flow':
-            from domestic_flow.flow import fetch_ssangkkuli_flow, format_ssangkkuli_message
-            from domestic_flow.handlers import flow_keyboard
-            kospi, kosdaq = await asyncio.gather(
-                loop.run_in_executor(None, fetch_ssangkkuli_flow, '코스피'),
-                loop.run_in_executor(None, fetch_ssangkkuli_flow, '코스닥'),
-            )
-            msg = (format_ssangkkuli_message(kospi, '코스피')
-                   + '\n\n'
-                   + format_ssangkkuli_message(kosdaq, '코스닥'))
-            await query.edit_message_text(msg, parse_mode='HTML', reply_markup=flow_keyboard())
 
-        elif action == 'hunt':
-            from domestic_flow.flow import fetch_preempt_flow, format_preempt_message
-            from domestic_flow.flow import _market_tag  # noqa
-            kospi, kosdaq = await asyncio.gather(
-                loop.run_in_executor(None, fetch_preempt_flow, '코스피'),
-                loop.run_in_executor(None, fetch_preempt_flow, '코스닥'),
-            )
-            msg = (format_preempt_message(kospi, '코스피')
-                   + '\n\n'
-                   + format_preempt_message(kosdaq, '코스닥'))
-            await query.edit_message_text(msg, parse_mode='HTML', reply_markup=_menu_keyboard())
+
 
     except Exception as e:
         logger.error(f'메뉴 콜백 오류 ({action}): {e}', exc_info=True)

@@ -24,8 +24,10 @@ from handlers import (
     handle_addbuy_callback, handle_avg_input, cancel_conv,
     WAITING_AVG,
 )
-from domestic_flow.handlers import cmd_flow, cmd_hunt, handle_flow_callback
-from monitor import check_and_alert
+from domestic_flow.handlers import cmd_flow, handle_flow_callback
+from datetime import time as dtime
+import pytz
+from monitor import check_and_alert, check_yangumyang_alert
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -54,8 +56,22 @@ def main():
         per_message=False,
     )
 
-    # 5분마다 가격 모니터링 잡 등록
+    KST = pytz.timezone('Asia/Seoul')
+
+    # 5분마다 미국장 레버리지 ETF 알림
     app.job_queue.run_repeating(check_and_alert, interval=300, first=30)
+
+    # 양음양 알림: 평일 09:05 (장 시작) + 14:50 (종가 매수 타이밍)
+    app.job_queue.run_daily(
+        check_yangumyang_alert,
+        time=dtime(9, 5, tzinfo=KST),
+        days=(0, 1, 2, 3, 4),
+    )
+    app.job_queue.run_daily(
+        check_yangumyang_alert,
+        time=dtime(14, 50, tzinfo=KST),
+        days=(0, 1, 2, 3, 4),
+    )
 
     app.add_handler(CommandHandler('start',  cmd_start))
     app.add_handler(CommandHandler('help',   cmd_help))
@@ -66,7 +82,6 @@ def main():
     app.add_handler(CommandHandler('weekly', cmd_weekly))
     app.add_handler(CommandHandler('alert',  cmd_alert))
     app.add_handler(CommandHandler('flow',   cmd_flow))
-    app.add_handler(CommandHandler('hunt',   cmd_hunt))
     app.add_handler(CallbackQueryHandler(handle_menu_callback, pattern='^menu\\|'))   # 메인 메뉴 버튼
     app.add_handler(CallbackQueryHandler(handle_flow_callback, pattern='^flow\\|'))  # 수급 버튼
     app.add_handler(CallbackQueryHandler(handle_callback, pattern='^calc\\|'))       # 시장위치 버튼

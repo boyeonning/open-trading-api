@@ -9,6 +9,9 @@
 알림 기준:
   - 현재가 ≤ 진입가        → 🔴 진입가 도달
   - 현재가 < 전일종가 and 진입가까지 3% 이내 → ⚡ 근접
+
+양음양 알림:
+  - 평일 09:05 (장 시작 직후) + 14:50 (종가 매수 타이밍) 2회 발송
 """
 import asyncio
 import logging
@@ -19,6 +22,7 @@ from telegram.ext import ContextTypes
 from weekly_config import WATCHLIST, SIGNAL_GO
 from calc import calculate_buy_plan
 from fetcher import fetch_vix, fetch_ticker_snapshot
+from domestic_flow.flow import fetch_pullback_flow, format_pullback_message
 
 logger = logging.getLogger(__name__)
 
@@ -147,3 +151,44 @@ async def check_and_alert(context: ContextTypes.DEFAULT_TYPE):
             logger.info(f'알림 발송 → chat_id={chat_id}')
         except Exception as e:
             logger.error(f'알림 발송 실패 (chat_id={chat_id}): {e}')
+
+
+async def check_yangumyang_alert(context: ContextTypes.DEFAULT_TYPE):
+    """평일 09:05 / 14:50 KST — 양음양 눌림목 종목 알림"""
+    chat_ids: set = context.bot_data.get('alert_chats', set())
+    if not chat_ids:
+        return
+
+    now_kst = datetime.now(KST)
+    hour, minute = now_kst.hour, now_kst.minute
+    # 09:05 또는 14:50 트리거 여부 표시
+    if hour == 9 and minute < 10:
+        label = '🌅 <b>장 시작 양음양 알림</b>'
+    else:
+        label = '🕯 <b>종가 매수 타이밍 — 양음양 알림</b>'
+
+    loop = asyncio.get_running_loop()
+    try:
+        kospi_rows, kosdaq_rows = await asyncio.gather(
+            loop.run_in_executor(None, fetch_pullback_flow, '코스피'),
+            loop.run_in_executor(None, fetch_pullback_flow, '코스닥'),
+        )
+    except Exception as e:
+        logger.error(f'양음양 알림 스캔 실패: {e}', exc_info=True)
+        return
+
+    body = (
+        format_pullback_message(kospi_rows, '코스피')
+        + '\n\n'
+        + format_pullback_message(kosdaq_rows, '코스닥')
+    )
+    time_str = now_kst.strftime('%H:%M KST')
+    msg = f'{label}  {time_str}\n\n{body}'
+    msg = msg[:4000] + ('...' if len(msg) > 4000 else '')
+
+    for chat_id in list(chat_ids):
+        try:
+            await context.bot.send_message(chat_id=chat_id, text=msg, parse_mode='HTML')
+            logger.info(f'양음양 알림 발송 → chat_id={chat_id}')
+        except Exception as e:
+            logger.error(f'양음양 알림 발송 실패 (chat_id={chat_id}): {e}')
