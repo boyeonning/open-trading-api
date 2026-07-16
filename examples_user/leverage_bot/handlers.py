@@ -48,11 +48,10 @@ def _menu_keyboard() -> InlineKeyboardMarkup:
             InlineKeyboardButton('📈 VIX 확인',     callback_data='menu|vix'),
         ],
         [
-            InlineKeyboardButton('📋 주간 전략',    callback_data='menu|weekly'),
             InlineKeyboardButton('🔔 자동 알림',    callback_data='menu|alert'),
+            InlineKeyboardButton('🇰🇷 수급 조회',   callback_data='menu|flow'),
         ],
         [
-            InlineKeyboardButton('🇰🇷 수급 조회',   callback_data='menu|flow'),
             InlineKeyboardButton('🎯 선점 후보',    callback_data='menu|hunt'),
         ],
     ])
