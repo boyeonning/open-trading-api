@@ -492,8 +492,8 @@ def fetch_preempt_flow(market: str = '코스닥') -> list[dict]:
             if r:
                 results.append(r)
 
-    # 거래량 배수 높은 순
-    results.sort(key=lambda r: r['거래량배수'], reverse=True)
+    # 낙폭 큰 순 (가장 많이 빠진 종목 우선)
+    results.sort(key=lambda r: r['낙폭'])
     logger.info(f"선점 스캔 완료: {len(results)}개 해당")
     return results
 
