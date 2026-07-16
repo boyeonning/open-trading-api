@@ -22,7 +22,7 @@ from telegram.ext import ContextTypes
 from weekly_config import WATCHLIST, SIGNAL_GO
 from calc import calculate_buy_plan
 from fetcher import fetch_vix, fetch_ticker_snapshot
-from domestic_flow.flow import fetch_pullback_flow, format_pullback_message
+from domestic_flow.flow import fetch_pullback_flow, format_pullback_message, _fetch_market_phase
 
 logger = logging.getLogger(__name__)
 
@@ -169,9 +169,10 @@ async def check_yangumyang_alert(context: ContextTypes.DEFAULT_TYPE):
 
     loop = asyncio.get_running_loop()
     try:
-        kospi_rows, kosdaq_rows = await asyncio.gather(
+        kospi_rows, kosdaq_rows, phase = await asyncio.gather(
             loop.run_in_executor(None, fetch_pullback_flow, '코스피'),
             loop.run_in_executor(None, fetch_pullback_flow, '코스닥'),
+            loop.run_in_executor(None, _fetch_market_phase),
         )
     except Exception as e:
         logger.error(f'양음양 알림 스캔 실패: {e}', exc_info=True)
@@ -183,7 +184,8 @@ async def check_yangumyang_alert(context: ContextTypes.DEFAULT_TYPE):
         + format_pullback_message(kosdaq_rows, '코스닥')
     )
     time_str = now_kst.strftime('%H:%M KST')
-    msg = f'{label}  {time_str}\n\n{body}'
+    phase_str = f'\n{phase}\n' if phase else '\n'
+    msg = f'{label}  {time_str}{phase_str}\n{body}'
     msg = msg[:4000] + ('...' if len(msg) > 4000 else '')
 
     for chat_id in list(chat_ids):

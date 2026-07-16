@@ -444,6 +444,57 @@ def _load_all_stock_codes(market: str) -> list[tuple[str, str]]:
     return stocks
 
 
+def _fetch_market_phase() -> str:
+    """코스닥 지수 현재가 vs MA20 비교 → 장세 판별 문자열 반환"""
+    try:
+        from datetime import datetime as _dt
+        params = {
+            'FID_COND_MRKT_DIV_CODE': 'U',
+            'FID_INPUT_ISCD':         '1001',
+            'FID_INPUT_DATE_1':       '20250101',
+            'FID_INPUT_DATE_2':       _dt.today().strftime('%Y%m%d'),
+            'FID_PERIOD_DIV_CODE':    'D',
+        }
+        res = ka._url_fetch(
+            '/uapi/domestic-stock/v1/quotations/inquire-daily-indexchartprice',
+            'FHKUP03500100', '', params,
+        )
+        if not res.isOK():
+            return ''
+
+        rows = getattr(res.getBody(), 'output2', None) or []
+        closes = []
+        for r in rows:
+            r = dict(r) if not isinstance(r, dict) else r
+            c = float(r.get('bstp_nmix_prpr', 0) or 0)
+            if c > 0:
+                closes.append(c)
+
+        if len(closes) < 20:
+            return ''
+
+        # rows가 최신순이므로 closes[0]=오늘
+        current = closes[0]
+        ma20    = sum(closes[:20]) / 20
+        ma60    = sum(closes[:60]) / 60 if len(closes) >= 60 else None
+
+        if current > ma20:
+            phase = '📈 상승장'
+            tip   = '패턴 적극 활용 가능'
+        else:
+            phase = '📉 하락장'
+            tip   = '단타 위주 권장, 오래 보유 주의'
+
+        ma60_str = f' / MA60 {ma60:,.0f}' if ma60 else ''
+        return (
+            f'{phase}  코스닥 <b>{current:,.1f}</b> / MA20 {ma20:,.1f}{ma60_str}\n'
+            f'<i>※ {tip}</i>'
+        )
+    except Exception as e:
+        logger.warning(f'장세 판별 실패: {e}')
+        return ''
+
+
 def fetch_pullback_flow(market: str = '코스피') -> list[dict]:
     """
     양음양 기법 스크리너 (핀업스탁 기법 기반) — Pattern 1 + Pattern 3
