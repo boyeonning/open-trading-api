@@ -40,6 +40,24 @@ _GRADE_MAP = {
 # ──────────────────────────────────────────────────────────
 #  인라인 키보드
 # ──────────────────────────────────────────────────────────
+def _menu_keyboard() -> InlineKeyboardMarkup:
+    """메인 메뉴 인라인 키보드"""
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton('📊 진입가 스캔',  callback_data='menu|check'),
+            InlineKeyboardButton('📈 VIX 확인',     callback_data='menu|vix'),
+        ],
+        [
+            InlineKeyboardButton('📋 주간 전략',    callback_data='menu|weekly'),
+            InlineKeyboardButton('🔔 자동 알림',    callback_data='menu|alert'),
+        ],
+        [
+            InlineKeyboardButton('🇰🇷 수급 조회',   callback_data='menu|flow'),
+            InlineKeyboardButton('🎯 선점 후보',    callback_data='menu|hunt'),
+        ],
+    ])
+
+
 def _make_keyboard(ticker: str, grade: str, close: float, date: str,
                    vix: Optional[float], below_50ma: bool, below_200ma: bool) -> InlineKeyboardMarkup:
     vix_s = f'{vix:.1f}' if vix else ''
@@ -57,7 +75,13 @@ def _make_keyboard(ticker: str, grade: str, close: float, date: str,
 # ──────────────────────────────────────────────────────────
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.warning(f"chat_id: {update.effective_chat.id}")
-    await update.message.reply_text(format_start_message(), parse_mode='HTML')
+    await update.message.reply_text(
+        '📊 <b>LevDip</b>  레버리지 ETF 눌림 매수 도우미\n\n'
+        '버튼을 눌러 원하는 기능을 선택하세요.\n'
+        '<i>티커를 직접 입력하면 진입가를 바로 계산합니다.</i>',
+        parse_mode='HTML',
+        reply_markup=_menu_keyboard(),
+    )
 
 
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -347,6 +371,222 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logger.error(f'{ticker} 처리 오류: {e}', exc_info=True)
         await wait.edit_text(f'❌ 오류 발생: {e}')
+
+
+# ──────────────────────────────────────────────────────────
+#  콜백 — 메뉴 버튼 (menu|...)
+# ──────────────────────────────────────────────────────────
+async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    _, action = query.data.split('|', 1)
+
+    # 공통: 메뉴 메시지를 로딩 텍스트로 교체 후 결과로 갱신
+    _LOADING = {
+        'check':  '⏳ 진입가 스캔 중...',
+        'vix':    '⏳ VIX 조회 중...',
+        'weekly': '',
+        'alert':  '',
+        'flow':   '📡 수급 조회 중...',
+        'hunt':   '🎯 선점 후보 탐색 중...\n<i>(전 종목 스캔, 약 2~3분 소요)</i>',
+    }
+
+    if action == 'weekly':
+        _GE = {'A': '🔵', 'B': '🟢', 'C': '🟡', 'D': '🟠', 'E': '🔴'}
+        go   = [(t, i) for t, i in WATCHLIST.items() if i['signal'] in SIGNAL_GO]
+        cond = [(t, i) for t, i in WATCHLIST.items() if i['signal'] in SIGNAL_COND]
+        hold = [(t, i) for t, i in WATCHLIST.items() if i['signal'] in SIGNAL_HOLD]
+        stop = [(t, i) for t, i in WATCHLIST.items() if i['signal'] in SIGNAL_STOP]
+        def _fmt(items):
+            return '  '.join(f'{_GE[i["grade"]]}{t}({i["grade"]})' for t, i in sorted(items)) or '없음'
+        msg = '\n'.join([
+            f'📋 <b>주간 기법</b>  {WEEKLY_TITLE}',
+            f'기준일: {WEEKLY_DATE}  총 {len(WATCHLIST)}종목', '',
+            f'🔵🟢 <b>진입 검토</b> ({len(go)}종목)', _fmt(go), '',
+            f'🟡 <b>조건부</b> ({len(cond)}종목)', _fmt(cond), '',
+            f'🟠 <b>신규 보류</b> ({len(hold)}종목)', _fmt(hold), '',
+            f'🔴 <b>접근 금지</b> ({len(stop)}종목)', _fmt(stop),
+        ])
+        await query.edit_message_text(msg, parse_mode='HTML', reply_markup=_menu_keyboard())
+        return
+
+    if action == 'alert':
+        # 알림 현황 + on/off 버튼
+        from monitor import _is_market_hours, _NEAR_THRESHOLD
+        chat_id = query.message.chat_id
+        chats = context.bot_data.get('alert_chats', set())
+        subscribed = chat_id in chats
+        market_txt = '🟢 장중' if _is_market_hours() else '🔴 장외'
+        status_txt = '구독 중 ✅' if subscribed else '미구독'
+        kb = InlineKeyboardMarkup([[
+            InlineKeyboardButton('🔕 알림 끄기' if subscribed else '🔔 알림 켜기',
+                                 callback_data='menu|alert_toggle'),
+            InlineKeyboardButton('🔍 즉시 체크', callback_data='menu|alert_test'),
+        ], [
+            InlineKeyboardButton('◀ 메뉴로',  callback_data='menu|back'),
+        ]])
+        go_count = sum(1 for i in WATCHLIST.values() if i['signal'] in SIGNAL_GO)
+        await query.edit_message_text(
+            f'🔔 <b>자동 알림</b>  {status_txt}\n\n'
+            f'시장: {market_txt}  |  모니터링: {go_count}종목\n'
+            f'기준: 진입가 도달 또는 {_NEAR_THRESHOLD:.0f}% 이내\n'
+            f'주기: 5분  |  쿨다운: 30분',
+            parse_mode='HTML',
+            reply_markup=kb,
+        )
+        return
+
+    if action == 'alert_toggle':
+        from monitor import _is_market_hours, _NEAR_THRESHOLD
+        chat_id = query.message.chat_id
+        chats: set = context.bot_data.setdefault('alert_chats', set())
+        if chat_id in chats:
+            chats.discard(chat_id)
+            toast = '🔕 알림을 껐습니다.'
+        else:
+            chats.add(chat_id)
+            toast = '🔔 알림을 켰습니다.'
+        subscribed = chat_id in chats
+        market_txt = '🟢 장중' if _is_market_hours() else '🔴 장외'
+        status_txt = '구독 중 ✅' if subscribed else '미구독'
+        go_count = sum(1 for i in WATCHLIST.values() if i['signal'] in SIGNAL_GO)
+        kb = InlineKeyboardMarkup([[
+            InlineKeyboardButton('🔕 알림 끄기' if subscribed else '🔔 알림 켜기',
+                                 callback_data='menu|alert_toggle'),
+            InlineKeyboardButton('🔍 즉시 체크', callback_data='menu|alert_test'),
+        ], [
+            InlineKeyboardButton('◀ 메뉴로', callback_data='menu|back'),
+        ]])
+        await query.edit_message_text(
+            f'🔔 <b>자동 알림</b>  {status_txt}\n\n'
+            f'{toast}\n\n'
+            f'시장: {market_txt}  |  모니터링: {go_count}종목\n'
+            f'기준: 진입가 도달 또는 {_NEAR_THRESHOLD:.0f}% 이내\n'
+            f'주기: 5분  |  쿨다운: 30분',
+            parse_mode='HTML',
+            reply_markup=kb,
+        )
+        return
+
+    if action == 'alert_test':
+        await query.edit_message_text('🔍 즉시 체크 중...', parse_mode='HTML')
+        try:
+            from monitor import _run_check
+            msg = await _run_check(context, force=True)
+        except Exception as e:
+            msg = f'❌ 체크 실패: {e}'
+        await query.edit_message_text(msg, parse_mode='HTML', reply_markup=_menu_keyboard())
+        return
+
+    if action == 'back':
+        await query.edit_message_text(
+            '📊 <b>LevDip</b>  레버리지 ETF 눌림 매수 도우미\n\n'
+            '버튼을 눌러 원하는 기능을 선택하세요.\n'
+            '<i>티커를 직접 입력하면 진입가를 바로 계산합니다.</i>',
+            parse_mode='HTML',
+            reply_markup=_menu_keyboard(),
+        )
+        return
+
+    # 로딩 메시지 표시
+    await query.edit_message_text(_LOADING.get(action, '⏳ 로딩 중...'), parse_mode='HTML')
+    loop = asyncio.get_running_loop()
+
+    try:
+        if action == 'check':
+            from domestic_flow.handlers import _run_flow  # noqa — 재사용 불가, 직접 구현
+            msg = await _run_cmd_check(loop)
+            await query.edit_message_text(msg, parse_mode='HTML', reply_markup=_menu_keyboard())
+
+        elif action == 'vix':
+            vix = await loop.run_in_executor(None, fetch_vix)
+            if vix is None:
+                msg = '❌ VIX 조회 실패'
+            else:
+                level = '😱 극도 공포' if vix >= 40 else ('⚠️ 공포' if vix >= 30 else ('😰 경계' if vix >= 20 else '😊 안정'))
+                msg = f'📈 <b>VIX</b>  <code>{vix:.2f}</code>  {level}'
+            await query.edit_message_text(msg, parse_mode='HTML', reply_markup=_menu_keyboard())
+
+        elif action == 'flow':
+            from domestic_flow.flow import fetch_ssangkkuli_flow, format_ssangkkuli_message
+            from domestic_flow.handlers import flow_keyboard
+            kospi, kosdaq = await asyncio.gather(
+                loop.run_in_executor(None, fetch_ssangkkuli_flow, '코스피'),
+                loop.run_in_executor(None, fetch_ssangkkuli_flow, '코스닥'),
+            )
+            msg = (format_ssangkkuli_message(kospi, '코스피')
+                   + '\n\n'
+                   + format_ssangkkuli_message(kosdaq, '코스닥'))
+            await query.edit_message_text(msg, parse_mode='HTML', reply_markup=flow_keyboard())
+
+        elif action == 'hunt':
+            from domestic_flow.flow import fetch_preempt_flow, format_preempt_message
+            from domestic_flow.flow import _market_tag  # noqa
+            kospi, kosdaq = await asyncio.gather(
+                loop.run_in_executor(None, fetch_preempt_flow, '코스피'),
+                loop.run_in_executor(None, fetch_preempt_flow, '코스닥'),
+            )
+            msg = (format_preempt_message(kospi, '코스피')
+                   + '\n\n'
+                   + format_preempt_message(kosdaq, '코스닥'))
+            await query.edit_message_text(msg, parse_mode='HTML', reply_markup=_menu_keyboard())
+
+    except Exception as e:
+        logger.error(f'메뉴 콜백 오류 ({action}): {e}', exc_info=True)
+        await query.edit_message_text(f'❌ 오류: {e}', reply_markup=_menu_keyboard())
+
+
+async def _run_cmd_check(loop) -> str:
+    """cmd_check 로직 재사용 — menu|check 콜백용"""
+    vix = await loop.run_in_executor(None, fetch_vix)
+
+    candidates = {
+        t: info for t, info in WATCHLIST.items()
+        if info['signal'] in SIGNAL_GO | SIGNAL_COND
+    }
+
+    lines = ['📊 <b>진입가 스캔</b>\n']
+    reached, near, rest = [], [], []
+
+    for ticker, info in candidates.items():
+        snap = await loop.run_in_executor(None, fetch_ticker_snapshot, ticker)
+        await asyncio.sleep(0.35)
+        if snap is None:
+            continue
+        grade = info['grade']
+        plan  = calculate_buy_plan(snap['prev_close'], grade, vix, False, False,
+                                   entry_pct_override=info.get('entry_pct'))
+        entry   = plan['rounds'][0]['buy_price']
+        current = snap['current_price']
+        gap_pct = (entry - current) / current * 100
+        signal  = info['signal']
+        row = (ticker, grade, signal, snap['prev_close'], entry, current, gap_pct)
+
+        if current <= entry:
+            reached.append(row)
+        elif gap_pct > -1.0:
+            near.append(row)
+        else:
+            rest.append(row)
+
+    def _fmt(rows, label):
+        out = [f'<b>{label}</b>']
+        for ticker, grade, signal, prev, entry, current, gap in sorted(rows, key=lambda x: x[6]):
+            out.append(
+                f'{signal} <b>{ticker}</b>  현재 <code>${current:,.2f}</code>  '
+                f'진입 <code>${entry:,.2f}</code>  ({gap:+.1f}%)'
+            )
+        return '\n'.join(out)
+
+    if reached:
+        lines.append(_fmt(reached, '🔴 진입가 도달'))
+    if near:
+        lines.append(_fmt(near, '⚡ 1% 이내 근접'))
+    if rest:
+        lines.append(_fmt(rest, '📋 대기 중'))
+
+    vix_txt = f'\n\n<i>VIX {vix:.1f}</i>' if vix else ''
+    return '\n\n'.join(lines) + vix_txt
 
 
 # ──────────────────────────────────────────────────────────

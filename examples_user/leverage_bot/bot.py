@@ -20,11 +20,11 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from handlers import (
     cmd_start, cmd_help, cmd_list, cmd_vix, cmd_scan, cmd_check, cmd_weekly,
     cmd_alert,
-    handle_message, handle_callback,
+    handle_message, handle_callback, handle_menu_callback,
     handle_addbuy_callback, handle_avg_input, cancel_conv,
     WAITING_AVG,
 )
-from domestic_flow.handlers import cmd_flow, handle_flow_callback
+from domestic_flow.handlers import cmd_flow, cmd_hunt, handle_flow_callback
 from monitor import check_and_alert
 
 logging.basicConfig(
@@ -66,6 +66,8 @@ def main():
     app.add_handler(CommandHandler('weekly', cmd_weekly))
     app.add_handler(CommandHandler('alert',  cmd_alert))
     app.add_handler(CommandHandler('flow',   cmd_flow))
+    app.add_handler(CommandHandler('hunt',   cmd_hunt))
+    app.add_handler(CallbackQueryHandler(handle_menu_callback, pattern='^menu\\|'))   # 메인 메뉴 버튼
     app.add_handler(CallbackQueryHandler(handle_flow_callback, pattern='^flow\\|'))  # 수급 버튼
     app.add_handler(CallbackQueryHandler(handle_callback, pattern='^calc\\|'))       # 시장위치 버튼
     app.add_handler(addbuy_conv)                                                     # 추매 버튼 + 평단 입력
