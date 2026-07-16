@@ -32,7 +32,7 @@ _OPEN_UTC  = 13 * 60      # 13:00 UTC (9:30 AM EDT 기준)
 _CLOSE_UTC = 21 * 60 + 30 # 21:30 UTC (5:00 PM EDT 기준, 여유 포함)
 
 _ALERT_COOLDOWN = timedelta(minutes=30)
-_NEAR_THRESHOLD = 3.0  # 진입가까지 몇 % 이내를 근접으로 볼지
+_NEAR_THRESHOLD = 1.0  # 진입가까지 몇 % 이내를 근접으로 볼지 (너무 넓으면 오알림)
 
 
 def _is_market_hours() -> bool:
