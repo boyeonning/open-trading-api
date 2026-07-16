@@ -217,7 +217,7 @@ async def cmd_check(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if current <= entry:
             reached.append(row)              # 진입가 도달
-        elif current < prev_close and gap_pct > -5.0:
+        elif current < prev_close and gap_pct > -1.0:
             near.append(row)                 # 하락 중 + 진입가 5% 이내
 
     # 정렬: 진입가에 가까운 순 (gap_pct 기준)
@@ -247,7 +247,7 @@ async def cmd_check(update: Update, context: ContextTypes.DEFAULT_TYPE):
         lines.append('— 진입가 도달 종목 없음')
 
     if near:
-        lines += ['', '⚡ <b>진입가 근접 (5% 이내)</b>']
+        lines += ['', '⚡ <b>진입가 근접 (1% 이내)</b>']
         for ticker, grade, prev_close, entry, current, pct, action in near:
             lines += _fmt_row(ticker, grade, prev_close, entry, current, pct, action)
 
