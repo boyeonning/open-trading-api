@@ -447,6 +447,7 @@ def _load_all_stock_codes(market: str) -> list[tuple[str, str]]:
 def _fetch_market_phase() -> str:
     """코스닥 지수 현재가 vs MA20 비교 → 장세 판별 문자열 반환"""
     try:
+        ka.auth()  # 토큰 초기화 보장
         from datetime import datetime as _dt
         params = {
             'FID_COND_MRKT_DIV_CODE': 'U',
