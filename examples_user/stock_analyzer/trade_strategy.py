@@ -114,76 +114,6 @@ def analyze(stock_input: str):
     vol20 = float(df['acml_vol'].tail(20).mean())
     vol_ratio = vol5 / vol20 if vol20 > 0 else 0
 
-    # 지지선 계산 (현재가 아래에 있는 값들)
-    support_candidates = {}
-
-    # 최근 저점들 (5일/10일/20일)
-    low5  = float(df.tail(5)['stck_lwpr'].min())
-    low10 = float(df.tail(10)['stck_lwpr'].min())
-    if low5 < price:
-        support_candidates['5일저점'] = low5
-    if low10 < price:
-        support_candidates['10일저점'] = low10
-    if low20 < price:
-        support_candidates['20일저점'] = low20
-
-    # 현재가 아래 이평선
-    for period in [5, 10, 20, 60, 120, 240]:
-        col = f'MA_{period}'
-        if col in df.columns and pd.notna(latest[col]):
-            val = float(latest[col])
-            if val < price:
-                support_candidates[f'MA{period}'] = val
-
-    # 볼린저 하단
-    if bb_lower < price:
-        support_candidates['볼린저하단'] = bb_lower
-
-    # 저항선 계산 (현재가 위에 있는 값들)
-    resistance_candidates = {}
-    high5  = float(df.tail(5)['stck_hgpr'].max())
-    high10 = float(df.tail(10)['stck_hgpr'].max())
-    if high5 > price:
-        resistance_candidates['5일고점'] = high5
-    if high10 > price:
-        resistance_candidates['10일고점'] = high10
-    if high20 > price:
-        resistance_candidates['20일고점'] = high20
-    for period in [5, 10, 20, 60, 120, 240]:
-        col = f'MA_{period}'
-        if col in df.columns and pd.notna(latest[col]):
-            val = float(latest[col])
-            if val > price:
-                resistance_candidates[f'MA{period}'] = val
-    if bb_upper > price:
-        resistance_candidates['볼린저상단'] = bb_upper
-
-    # 1차 손절선: 현재가 바로 아래 가장 가까운 지지선 아래 (ATR * 0.5 여유)
-    supports_below = {k: v for k, v in support_candidates.items() if v < price}
-    if supports_below:
-        nearest_support_name = max(supports_below, key=lambda k: supports_below[k])
-        nearest_support = supports_below[nearest_support_name]
-        stop_loss = nearest_support - atr14 * 0.5
-    else:
-        nearest_support_name = '볼린저하단'
-        nearest_support = bb_lower
-        stop_loss = bb_lower - atr14 * 0.5
-
-    # 1차/2차 목표가: 현재가 바로 위 가장 가까운 저항선 순서
-    resistances_above = sorted(
-        [(k, v) for k, v in resistance_candidates.items() if v > price],
-        key=lambda x: x[1]
-    )
-    target1_name, target1 = resistances_above[0] if len(resistances_above) > 0 else ('없음', price * 1.05)
-    target2_name, target2 = resistances_above[1] if len(resistances_above) > 1 else ('없음', price * 1.10)
-
-    # 손익비 계산
-    risk = price - stop_loss
-    reward1 = target1 - price
-    reward2 = target2 - price
-    rr1 = reward1 / risk if risk > 0 else 0
-    rr2 = reward2 / risk if risk > 0 else 0
-
     # 출력
     sep = '=' * 50
     print(sep)
@@ -216,14 +146,6 @@ def analyze(stock_input: str):
     print(f"  5일 평균:  {vol5:>12,.0f}")
     print(f"  20일 평균: {vol20:>12,.0f}")
     print(f"  비율(5/20): {vol_ratio:.2f}  ({'거래량 증가' if vol_ratio > 1.2 else '거래량 감소' if vol_ratio < 0.8 else '보통'})")
-
-    print("\n[매매 참고]")
-    print(f"  지지선(근거): {nearest_support:>10,.0f}원  ({nearest_support_name})")
-    print(f"  손절선:       {stop_loss:>10,.0f}원  (지지선 - ATR×0.5)")
-    print(f"  1차 목표:     {target1:>10,.0f}원  ({target1_name})")
-    print(f"  2차 목표:     {target2:>10,.0f}원  ({target2_name})")
-    print(f"  손익비(1차):  1 : {rr1:.1f}")
-    print(f"  손익비(2차):  1 : {rr2:.1f}")
 
     print("\n[최근 10일 캔들]")
     for _, row in df.tail(10).iterrows():
