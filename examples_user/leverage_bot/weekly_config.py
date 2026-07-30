@@ -11,8 +11,8 @@ entry_pct:
     float → 해당 % 강제 적용 (메가캡 예외 등)
 """
 
-WEEKLY_DATE  = "2026-07-18"
-WEEKLY_TITLE = "7월 3주차"
+WEEKLY_DATE  = "2026-07-26"
+WEEKLY_TITLE = "7월 4주차"
 
 # 신호 분류 (handlers에서 직접 비교용)
 SIGNAL_GO   = {'🔵', '🟢'}
@@ -21,19 +21,23 @@ SIGNAL_HOLD = {'🟠'}
 SIGNAL_STOP = {'🔴'}
 
 WATCHLIST: dict[str, dict] = {
+    # ── 진입 검토 가능 (🟢) ────────────────────────────────────
+    'UCO':  {'grade': 'A', 'signal': '🟢', 'entry_pct': None,
+             'action': '진입 근접, 추가 하락 시 -3% 대기'},
+
     # ── 조건부 (🟡) — 메가캡 예외, 50일선 데이터 확인 중 ──────
-    'NVDL': {'grade': 'C', 'signal': '🟡', 'entry_pct': None,
+    'NVDL': {'grade': 'B', 'signal': '🟡', 'entry_pct': None,
              'action': '메가캡 조건부: 1차만, 반도체 클러스터 중복 금지'},
-    'TSLL': {'grade': 'A', 'signal': '🟡', 'entry_pct': 4.0,
-             'action': '메가캡 예외: 1차만, 기준 -4%로 깊게'},
-    'GGLL': {'grade': 'C', 'signal': '🟡', 'entry_pct': 6.0,
-             'action': '메가캡 예외: 1차만, 기준 -6%로 깊게'},
-    'AVL':  {'grade': 'C', 'signal': '🟡', 'entry_pct': 6.0,
-             'action': '메가캡 예외: 1차만, 기준 -6%로 깊게'},
-    'ASMU': {'grade': 'C', 'signal': '🟡', 'entry_pct': 6.0,
-             'action': '메가캡 예외: 1차만, 기준 -6%로 깊게'},
+    'TSLL': {'grade': 'E', 'signal': '🟡', 'entry_pct': 8.0,
+             'action': '메가캡 예외: 1차만, 기준 -8%로 깊게'},
+    'GGLL': {'grade': 'D', 'signal': '🟡', 'entry_pct': 7.0,
+             'action': '메가캡 예외: 1차만, 기준 -7%로 깊게'},
     'AAPU': {'grade': 'B', 'signal': '🟡', 'entry_pct': None,
              'action': '상승/횡보, 추격 금지'},
+    'AVL':  {'grade': 'B', 'signal': '🟡', 'entry_pct': 5.0,
+             'action': '메가캡 예외: 1차만, 기준 -5%로 깊게'},
+    'ASMU': {'grade': 'B', 'signal': '🟡', 'entry_pct': 5.0,
+             'action': '메가캡 예외: 1차만, 기준 -5%로 깊게'},
 
     # ── 신규 보류 (🟠) — 50일선 아래 ──────────────────────────
     'UPRO': {'grade': 'A', 'signal': '🟠', 'entry_pct': None,
@@ -50,23 +54,21 @@ WATCHLIST: dict[str, dict] = {
              'action': '50일선 아래, 신규 보류'},
     'SOXL': {'grade': 'D', 'signal': '🟠', 'entry_pct': None,
              'action': '50일선 아래, 신규 보류'},
-    'PTIR': {'grade': 'B', 'signal': '🟠', 'entry_pct': None,
+    'PTIR': {'grade': 'C', 'signal': '🟠', 'entry_pct': None,
              'action': '50일선 아래, 신규 보류'},
     'MRVU': {'grade': 'E', 'signal': '🟠', 'entry_pct': None,
              'action': '50일선 아래, 신규 보류'},
     'MSTX': {'grade': 'D', 'signal': '🟠', 'entry_pct': None,
              'action': '50일선 아래, 신규 보류'},
-    'CONL': {'grade': 'C', 'signal': '🟠', 'entry_pct': None,
-             'action': '50일선 아래, 신규 보류'},
-    'UCO':  {'grade': 'C', 'signal': '🟠', 'entry_pct': None,
+    'CONL': {'grade': 'E', 'signal': '🟠', 'entry_pct': None,
              'action': '50일선 아래, 신규 보류'},
 
     # ── 접근 금지 (🔴) — 200일선 아래 ─────────────────────────
-    'BITX': {'grade': 'B', 'signal': '🔴', 'entry_pct': None,
+    'BITX': {'grade': 'A', 'signal': '🔴', 'entry_pct': None,
              'action': '200일선 아래, 접근금지'},
-    'ETHU': {'grade': 'D', 'signal': '🔴', 'entry_pct': None,
+    'ETHU': {'grade': 'B', 'signal': '🔴', 'entry_pct': None,
              'action': '200일선 아래, 접근금지'},
-    'AGQ':  {'grade': 'B', 'signal': '🔴', 'entry_pct': None,
+    'AGQ':  {'grade': 'C', 'signal': '🔴', 'entry_pct': None,
              'action': '200일선 아래, 접근금지'},
     'TMF':  {'grade': 'A', 'signal': '🔴', 'entry_pct': None,
              'action': '200일선 아래, 접근금지'},

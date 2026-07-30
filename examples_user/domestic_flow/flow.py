@@ -37,9 +37,14 @@ INVESTOR_CODES = {
 # 양음양 기준
 YANGUMYANG_MIN_RISE  =  5.0   # 전일 장대양봉 최소 등락률
 YANGUMYANG_MAX_RISE  = 20.0   # 전일 장대양봉 최대 등락률 (초과 시 수익실현 물량 우려)
-YANGUMYANG_VOL_RATIO =  0.6   # 오늘 거래량이 전일의 이 비율 이하여야 함
-YANGUMYANG_MA5_GAP   = -5.0   # MA5 대비 최대 이탈폭 (이 이상 이탈 시 제외)
-YANGUMYANG_MIN_TRADE = 50_000_000_000  # 전일 최소 거래대금 (50억) — 잡주 제외
+YANGUMYANG_VOL_RATIO =  0.6   # P1: 오늘 거래량이 전일의 이 비율 이하여야 함
+YANGUMYANG_VOL_RATIO_P3 = 0.85  # P3: 횡보 구간 최대 거래량 / 장대양봉 거래량 상한
+YANGUMYANG_BODY_RATIO = 0.4   # P1: 전일 양봉 몸통 비율 (고저 범위 대비)
+YANGUMYANG_MA5_GAP   = -5.0   # P1: MA5 대비 최대 이탈폭
+YANGUMYANG_MA5_GAP_P3 = -10.0  # P3: MA5 대비 최대 이탈폭 (완화)
+YANGUMYANG_MA_NEAR_P3 = 10.0  # P3: MA 근접 기준 (±%)
+YANGUMYANG_MAX_SIDEWAY = 5     # P3: 장대양봉 이후 최대 횡보 허용일수
+YANGUMYANG_MIN_TRADE = 2_000_000_000   # 전일 최소 거래대금 (20억) — 잡주 제외
 
 # 동전주/소형주 제외 기준
 MIN_PRICE        = 3_000      # 최소 주가 (원) — 3,000원 미만 제외
@@ -47,7 +52,7 @@ MIN_PRICE        = 3_000      # 최소 주가 (원) — 3,000원 미만 제외
 # ETF/ETN/인버스/레버리지 제외 키워드
 _ETF_KEYWORDS = (
     'KODEX', 'TIGER', 'KBSTAR', 'ARIRANG', 'HANARO', 'KOSEF', 'SOL', 'ACE',
-    'RISE', 'PLUS', 'SMART', 'TREX', 'WOORI', 'IBK',
+    'RISE', 'PLUS', 'SMART', 'TREX', 'WOORI', 'IBK', 'BNK',
     'ETF', 'ETN', '레버리지', '인버스', '선물', '스팩', 'SPAC',
 )
 
@@ -229,7 +234,7 @@ def _check_yangumyang(price_data: list[dict]) -> Optional[dict]:
         return None
     prev_rng = yesterday['고가'] - yesterday['저가']
     prev_body = yesterday['종가'] - yesterday['시가']
-    if prev_rng > 0 and prev_body / prev_rng < 0.5:  # 몸통이 작으면 제외
+    if prev_rng > 0 and prev_body / prev_rng < YANGUMYANG_BODY_RATIO:  # 몸통이 작으면 제외
         return None
 
     # ④ 전일 대량거래: 직전 5일(price_data[1:6]) 평균 거래량 대비 1.5배 이상
@@ -280,7 +285,7 @@ def _check_yangumyang_p3(price_data: list[dict]) -> Optional[dict]:
 
     Pattern 1과 차이: 음봉 하루가 아니라 수일간 횡보 후 공략
     """
-    if len(price_data) < 11:
+    if len(price_data) < 21:
         return None
 
     today = price_data[0]
@@ -288,9 +293,10 @@ def _check_yangumyang_p3(price_data: list[dict]) -> Optional[dict]:
     if today['종가'] < MIN_PRICE:
         return None
 
-    # MA5, MA10 계산
+    # MA5, MA10, MA20 계산
     ma5  = sum(d['종가'] for d in price_data[:5])  / 5
     ma10 = sum(d['종가'] for d in price_data[:10]) / 10
+    ma20 = sum(d['종가'] for d in price_data[:20]) / 20
 
     # 장대양봉 찾기: 최근 2~10일 내 (오늘 제외)
     yangbong_idx = None
@@ -304,7 +310,7 @@ def _check_yangumyang_p3(price_data: list[dict]) -> Optional[dict]:
             continue
         rng = d['고가'] - d['저가']
         body = d['종가'] - d['시가']
-        if rng > 0 and body / rng < 0.5:  # 몸통이 작으면 (윗꼬리만 긴 경우) 제외
+        if rng > 0 and body / rng < YANGUMYANG_BODY_RATIO:  # 몸통이 작으면 (윗꼬리만 긴 경우) 제외
             continue
         # 그 직전 5일 평균 거래량 대비 1.5배 이상
         prev_vols = [price_data[j]['거래량'] for j in range(i+1, min(i+6, len(price_data)))]
@@ -316,30 +322,36 @@ def _check_yangumyang_p3(price_data: list[dict]) -> Optional[dict]:
     if yangbong_idx is None:
         return None
 
+    # 횡보 기간이 너무 길면 추세 하락으로 판단 (케이뱅크처럼 장기 하락 제외)
+    if yangbong_idx - 1 > YANGUMYANG_MAX_SIDEWAY:
+        return None
+
     # 장대양봉 이후 오늘까지 구간 (최신순: [0]=오늘, [yangbong_idx-1]=장대양봉 다음날)
     since = price_data[:yangbong_idx]   # 오늘 포함, 장대양봉은 미포함
 
     if len(since) < 2:
         return None
 
-    # 거래량 감소 확인: 장대양봉 이후 최대 거래량 < 장대양봉의 60%
+    # 거래량 감소 확인: 장대양봉 이후 최대 거래량 < 장대양봉의 85% (P3 전용 완화 기준)
     yangbong_vol = price_data[yangbong_idx]['거래량']
     max_since_vol = max(d['거래량'] for d in since)
-    if max_since_vol > yangbong_vol * YANGUMYANG_VOL_RATIO:
+    if max_since_vol > yangbong_vol * YANGUMYANG_VOL_RATIO_P3:
         return None
 
-    # 5일선 이탈 확인: 횡보 기간 중 종가가 MA5 -5% 이상 이탈하면 안 됨
+    # 5일선 이탈 확인: 횡보 기간 중 종가가 MA5 -10% 이상 이탈하면 안 됨 (P3 전용 완화)
     for d in since:
-        if d['종가'] < ma5 * (1 + YANGUMYANG_MA5_GAP / 100):
+        if d['종가'] < ma5 * (1 + YANGUMYANG_MA5_GAP_P3 / 100):
             return None
 
-    # 오늘 현재가가 MA5 또는 MA10 ±5% 이내
+    # 오늘 현재가가 MA5, MA10, MA20 중 하나 ±10% 이내 (P3 전용 완화)
     ma5_gap  = (today['종가'] - ma5)  / ma5  * 100
     ma10_gap = (today['종가'] - ma10) / ma10 * 100
-    near_ma5  = abs(ma5_gap)  <= 5.0
-    near_ma10 = abs(ma10_gap) <= 5.0
+    ma20_gap = (today['종가'] - ma20) / ma20 * 100
+    near_ma5  = abs(ma5_gap)  <= YANGUMYANG_MA_NEAR_P3
+    near_ma10 = abs(ma10_gap) <= YANGUMYANG_MA_NEAR_P3
+    near_ma20 = abs(ma20_gap) <= YANGUMYANG_MA_NEAR_P3
 
-    if not (near_ma5 or near_ma10):
+    if not (near_ma5 or near_ma10 or near_ma20):
         return None
 
     yangbong_day = price_data[yangbong_idx]
@@ -350,10 +362,13 @@ def _check_yangumyang_p3(price_data: list[dict]) -> Optional[dict]:
         '횡보일수':       yangbong_idx - 1,
         'MA5':            round(ma5),
         'MA10':           round(ma10),
+        'MA20':           round(ma20),
         'MA5괴리율':      round(ma5_gap, 1),
         'MA10괴리율':     round(ma10_gap, 1),
+        'MA20괴리율':     round(ma20_gap, 1),
         'MA5근처':        near_ma5,
         'MA10근처':       near_ma10,
+        'MA20근처':       near_ma20,
         '오늘거래량':     today['거래량'],
         '패턴':           'P3',
     }
@@ -538,8 +553,8 @@ def fetch_pullback_flow(market: str = '코스피') -> list[dict]:
             if r:
                 results.append(r)
 
-    # MA5 괴리율 높은 순
-    results.sort(key=lambda r: r['MA5괴리율'], reverse=True)
+    # 전일 거래대금 높은 순
+    results.sort(key=lambda r: r.get('전일거래량', 0) * r.get('현재가', 0), reverse=True)
     logger.info(f"양음양 스캔 완료: {len(results)}개 해당")
     return results
 
@@ -698,8 +713,12 @@ def format_pullback_message(rows: list[dict], market: str) -> str:
     if p3:
         lines.append('\n<b>── Pattern 3 (횡보 눌림) ──</b>')
     for i, r in enumerate(p3, 1):
-        ma_tag = 'MA5' if r.get('MA5근처') else 'MA10'
-        ma_gap = r['MA5괴리율'] if r.get('MA5근처') else r['MA10괴리율']
+        if r.get('MA5근처'):
+            ma_tag, ma_gap = 'MA5',  r['MA5괴리율']
+        elif r.get('MA10근처'):
+            ma_tag, ma_gap = 'MA10', r['MA10괴리율']
+        else:
+            ma_tag, ma_gap = 'MA20', r.get('MA20괴리율', 0)
         lines.append(
             f'\n{i}. <b>{r["종목명"]}</b> <code>{r["코드"]}</code> <i>{_market_tag(r["코드"])}</i>\n'
             f'   {r["현재가"]:,}원 {_rate_str(r["등락률"])}\n'
