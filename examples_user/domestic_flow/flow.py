@@ -37,7 +37,7 @@ INVESTOR_CODES = {
 
 # 양음양 기준
 YANGUMYANG_MIN_RISE  =  5.0   # 전일 장대양봉 최소 등락률
-YANGUMYANG_MAX_RISE  = 30.0   # 전일 장대양봉 최대 등락률 (초과 시 수익실현 물량 우려)
+YANGUMYANG_MAX_RISE  = 20.0   # 전일 장대양봉 최대 등락률 — PDF 기준 20% (초과 시 수익실현 물량 우려)
 YANGUMYANG_VOL_RATIO =  0.6   # P1: 오늘 거래량이 전일의 이 비율 이하여야 함
 YANGUMYANG_VOL_RATIO_P3 = 0.85  # P3: 횡보 구간 최대 거래량 / 장대양봉 거래량 상한
 YANGUMYANG_BODY_RATIO = 0.4   # P1: 전일 양봉 몸통 비율 (고저 범위 대비)
@@ -335,18 +335,23 @@ def _check_yangumyang_p3(price_data: list[dict]) -> Optional[dict]:
     if yangbong_idx - 1 > YANGUMYANG_MAX_SIDEWAY:
         return None
 
-    # 현재가가 장대양봉 종가 대비 -5%~0% 범위여야 함
-    # 0% 초과 = 기준봉 이후 더 올라서 높은 가격 횡보 → 눌림목 아님
-    # -5% 미만 = 하락 추세로 판단
     yangbong_close = price_data[yangbong_idx]['종가']
-    drop_pct = (today['종가'] - yangbong_close) / yangbong_close * 100
-    if drop_pct > 0 or drop_pct < YANGUMYANG_MAX_DROP_P3:
-        return None
 
     # 장대양봉 이후 오늘까지 구간 (최신순: [0]=오늘, [yangbong_idx-1]=장대양봉 다음날)
     since = price_data[:yangbong_idx]   # 오늘 포함, 장대양봉은 미포함
 
     if len(since) < 2:
+        return None
+
+    # ── 핵심 조건: 기준봉 이후 한 번도 기준봉 종가를 초과하면 안 됨 ──
+    # 기준봉 종가 초과 = 추가 상승 후 높은 가격대에서 횡보 → 눌림목 아님
+    max_since_close = max(d['종가'] for d in since)
+    if max_since_close > yangbong_close:
+        return None
+
+    # 현재가가 기준봉 종가 대비 하락폭 계산 (-5% 이상이어야 추세 하락 아님)
+    drop_pct = (today['종가'] - yangbong_close) / yangbong_close * 100
+    if drop_pct < YANGUMYANG_MAX_DROP_P3:
         return None
 
     # 거래량 감소 확인: 장대양봉 이후 최대 거래량 < 장대양봉의 85% (P3 전용 완화 기준)
@@ -355,7 +360,7 @@ def _check_yangumyang_p3(price_data: list[dict]) -> Optional[dict]:
     if max_since_vol > yangbong_vol * YANGUMYANG_VOL_RATIO_P3:
         return None
 
-    # 5일선 이탈 확인: 횡보 기간 중 종가가 MA5 -10% 이상 이탈하면 안 됨 (P3 전용 완화)
+    # 5일선 이탈 확인: 횡보 기간 중 종가가 MA5 -5% 이상 이탈하면 안 됨
     for d in since:
         if d['종가'] < ma5 * (1 + YANGUMYANG_MA5_GAP_P3 / 100):
             return None
