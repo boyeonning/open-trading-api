@@ -239,8 +239,9 @@ def _check_yangumyang(price_data: list[dict]) -> Optional[dict]:
     if prev_rng > 0 and prev_body / prev_rng < YANGUMYANG_BODY_RATIO:  # 몸통이 작으면 제외
         return None
 
-    # ④ 전일 대량거래: 직전 5일(price_data[1:6]) 평균 거래량 대비 1.5배 이상
-    prev_5d_vols = [d['거래량'] for d in price_data[1:6]]
+    # ④ 전일 대량거래: 전일 이전 5일(price_data[2:7]) 평균 거래량 대비 1.5배 이상
+    # [1:6]은 어제 자신이 포함되어 평균이 왜곡됨 → [2:7]로 어제 제외
+    prev_5d_vols = [d['거래량'] for d in price_data[2:7]]
     avg_vol = sum(prev_5d_vols) / len(prev_5d_vols) if prev_5d_vols else 0
     if avg_vol > 0 and yesterday['거래량'] < avg_vol * 1.5:
         return None
