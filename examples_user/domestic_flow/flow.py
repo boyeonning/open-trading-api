@@ -662,6 +662,7 @@ def fetch_pullback_flow(market: str = '코스피') -> list[dict]:
     Pattern 1: 전일 장대양봉 → 오늘 거래량↓ 음봉 (5일선 위)
     Pattern 3: 장대양봉 후 2~10일 거래량 감소 횡보 → MA5/MA10 근처 공략
     """
+    ka.auth()  # 토큰 초기화 (_TRENV tuple 방지)
     stocks = _load_all_stock_codes(market)
     if not stocks:
         return []
