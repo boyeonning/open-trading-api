@@ -335,10 +335,12 @@ def _check_yangumyang_p3(price_data: list[dict]) -> Optional[dict]:
     if yangbong_idx - 1 > YANGUMYANG_MAX_SIDEWAY:
         return None
 
-    # 현재가가 장대양봉 종가 대비 -5% 이상 이탈하면 하락 추세로 판단
+    # 현재가가 장대양봉 종가 대비 -5%~0% 범위여야 함
+    # 0% 초과 = 기준봉 이후 더 올라서 높은 가격 횡보 → 눌림목 아님
+    # -5% 미만 = 하락 추세로 판단
     yangbong_close = price_data[yangbong_idx]['종가']
     drop_pct = (today['종가'] - yangbong_close) / yangbong_close * 100
-    if drop_pct < YANGUMYANG_MAX_DROP_P3:
+    if drop_pct > 0 or drop_pct < YANGUMYANG_MAX_DROP_P3:
         return None
 
     # 장대양봉 이후 오늘까지 구간 (최신순: [0]=오늘, [yangbong_idx-1]=장대양봉 다음날)
