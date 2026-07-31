@@ -9,6 +9,7 @@
 import sys
 import os
 import logging
+import math
 import time
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -36,14 +37,15 @@ INVESTOR_CODES = {
 
 # 양음양 기준
 YANGUMYANG_MIN_RISE  =  5.0   # 전일 장대양봉 최소 등락률
-YANGUMYANG_MAX_RISE  = 20.0   # 전일 장대양봉 최대 등락률 (초과 시 수익실현 물량 우려)
+YANGUMYANG_MAX_RISE  = 30.0   # 전일 장대양봉 최대 등락률 (초과 시 수익실현 물량 우려)
 YANGUMYANG_VOL_RATIO =  0.6   # P1: 오늘 거래량이 전일의 이 비율 이하여야 함
 YANGUMYANG_VOL_RATIO_P3 = 0.85  # P3: 횡보 구간 최대 거래량 / 장대양봉 거래량 상한
 YANGUMYANG_BODY_RATIO = 0.4   # P1: 전일 양봉 몸통 비율 (고저 범위 대비)
 YANGUMYANG_MA5_GAP   = -5.0   # P1: MA5 대비 최대 이탈폭
-YANGUMYANG_MA5_GAP_P3 = -10.0  # P3: MA5 대비 최대 이탈폭 (완화)
+YANGUMYANG_MA5_GAP_P3 = -5.0   # P3: MA5 대비 최대 이탈폭
 YANGUMYANG_MA_NEAR_P3 = 10.0  # P3: MA 근접 기준 (±%)
 YANGUMYANG_MAX_SIDEWAY = 5     # P3: 장대양봉 이후 최대 횡보 허용일수
+YANGUMYANG_MAX_DROP_P3 = -5.0  # P3: 장대양봉 종가 대비 현재가 최대 하락폭
 YANGUMYANG_MIN_TRADE = 2_000_000_000   # 전일 최소 거래대금 (20억) — 잡주 제외
 
 # 동전주/소형주 제외 기준
@@ -249,8 +251,11 @@ def _check_yangumyang(price_data: list[dict]) -> Optional[dict]:
     if today_close <= 0 or today_open <= 0:
         return None
 
-    # ⑤ 오늘 음봉: 종가 < 시가
-    if today_close >= today_open:
+    # ⑤ 오늘 음봉 또는 도지 (몸통이 전체 범위의 10% 이하)
+    today_rng  = today['고가'] - today['저가']
+    today_body = abs(today_close - today_open)
+    is_doji    = today_rng > 0 and today_body / today_rng < 0.1
+    if today_close > today_open and not is_doji:
         return None
 
     # ⑥ 오늘 거래량이 전일의 60% 이하 (핵심 조건)
@@ -263,6 +268,13 @@ def _check_yangumyang(price_data: list[dict]) -> Optional[dict]:
     if ma5_gap_pct < YANGUMYANG_MA5_GAP:
         return None
 
+    # 복합 스코어: 거래량 감소폭(40) + MA5 근접도(20) + 거래대금(40)
+    prev_trade  = yesterday['종가'] * yesterday['거래량']
+    vol_score   = (1 - vol_ratio) * 40
+    ma5_score   = max(0, 5 - abs(ma5_gap_pct)) * 4
+    trade_score = min(40, math.log10(max(1, prev_trade / 1e7)) * 10)
+    score = round(vol_score + ma5_score + trade_score, 1)
+
     return {
         '전일등락률':  prev_rate,
         'MA5':         round(ma5),
@@ -272,6 +284,7 @@ def _check_yangumyang(price_data: list[dict]) -> Optional[dict]:
         '오늘거래량':  today['거래량'],
         '전일고가':    yesterday['고가'],
         '전일저가':    yesterday['저가'],
+        'score':       score,
         '패턴':        'P1',
     }
 
@@ -303,14 +316,10 @@ def _check_yangumyang_p3(price_data: list[dict]) -> Optional[dict]:
     for i in range(2, min(11, len(price_data))):
         d    = price_data[i]
         rate = d.get('등락률', 0)
-        # 등락률 +5~20% AND 반드시 양봉(종가 > 시가) AND 몸통이 전체 범위의 50% 이상
+        # 등락률 +5~30% AND 반드시 양봉(종가 > 시가) — P3는 모양보다 등락률+거래량이 핵심
         if not (YANGUMYANG_MIN_RISE <= rate <= YANGUMYANG_MAX_RISE):
             continue
         if d['종가'] <= d['시가']:  # 음봉이면 제외
-            continue
-        rng = d['고가'] - d['저가']
-        body = d['종가'] - d['시가']
-        if rng > 0 and body / rng < YANGUMYANG_BODY_RATIO:  # 몸통이 작으면 (윗꼬리만 긴 경우) 제외
             continue
         # 그 직전 5일 평균 거래량 대비 1.5배 이상
         prev_vols = [price_data[j]['거래량'] for j in range(i+1, min(i+6, len(price_data)))]
@@ -324,6 +333,12 @@ def _check_yangumyang_p3(price_data: list[dict]) -> Optional[dict]:
 
     # 횡보 기간이 너무 길면 추세 하락으로 판단 (케이뱅크처럼 장기 하락 제외)
     if yangbong_idx - 1 > YANGUMYANG_MAX_SIDEWAY:
+        return None
+
+    # 현재가가 장대양봉 종가 대비 -5% 이상 이탈하면 하락 추세로 판단
+    yangbong_close = price_data[yangbong_idx]['종가']
+    drop_pct = (today['종가'] - yangbong_close) / yangbong_close * 100
+    if drop_pct < YANGUMYANG_MAX_DROP_P3:
         return None
 
     # 장대양봉 이후 오늘까지 구간 (최신순: [0]=오늘, [yangbong_idx-1]=장대양봉 다음날)
@@ -355,11 +370,20 @@ def _check_yangumyang_p3(price_data: list[dict]) -> Optional[dict]:
         return None
 
     yangbong_day = price_data[yangbong_idx]
+
+    # 복합 스코어: 거래량감소폭(30) + 경과일(25) + 눌림깊이(20) + 거래대금(25)
+    sideway_days   = yangbong_idx - 1
+    vol_dec_score  = (1 - max_since_vol / yangbong_vol) * 30
+    fresh_score    = (YANGUMYANG_MAX_SIDEWAY - sideway_days) / YANGUMYANG_MAX_SIDEWAY * 25
+    drop_score     = (drop_pct - YANGUMYANG_MAX_DROP_P3) / (-YANGUMYANG_MAX_DROP_P3) * 20
+    trade_score    = min(25, math.log10(max(1, yangbong_day['거래량'] * today['종가'] / 1e7)) * 8)
+    score = round(vol_dec_score + fresh_score + drop_score + trade_score, 1)
+
     return {
         '장대양봉일':     yangbong_day['날짜'],
         '장대양봉등락률': yangbong_day.get('등락률', 0),
         '장대양봉거래량': yangbong_day['거래량'],
-        '횡보일수':       yangbong_idx - 1,
+        '횡보일수':       sideway_days,
         'MA5':            round(ma5),
         'MA10':           round(ma10),
         'MA20':           round(ma20),
@@ -370,7 +394,126 @@ def _check_yangumyang_p3(price_data: list[dict]) -> Optional[dict]:
         'MA10근처':       near_ma10,
         'MA20근처':       near_ma20,
         '오늘거래량':     today['거래량'],
+        'score':          score,
         '패턴':           'P3',
+    }
+
+
+def _check_yangumyang_gamejoa(price_data: list[dict]) -> Optional[dict]:
+    """
+    양음양 종가매수 패턴 — gamejoa 선정 기준 (P1/P3보다 완화된 독립 패턴)
+
+    조건:
+      - 기준봉: 최근 1~7일 내 +5~30%, 직전 5일 평균 대비 거래량 1.5배 이상
+      - 오늘:   음봉 또는 도지 (몸통 < 고저범위 10%)
+      - 오늘 거래량 < 기준봉 거래량의 70%
+      - 현재가가 MA5/MA10/MA20 중 하나 ±15% 이내
+      - 기준봉 종가 대비 현재가 -20% 이상 (너무 많이 빠진 건 제외)
+
+    P1/P3와 차이점:
+      - 몸통 비율 체크 없음
+      - 횡보 기간 내 MA5 이탈 체크 없음 (最終 위치만 확인)
+      - MA 허용폭 ±15% (P1: -5%, P3: ±10%)
+      - 기준봉 탐색 범위 어제~7일 전 (P3는 2~10일)
+    """
+    if len(price_data) < 21:
+        return None
+
+    today = price_data[0]
+    if today['종가'] < MIN_PRICE:
+        return None
+
+    today_close = today['종가']
+    today_open  = today['시가']
+
+    if today_close <= 0 or today_open <= 0:
+        return None
+
+    # ① 오늘 음봉 또는 도지 (몸통이 고저범위의 10% 이하)
+    today_rng  = today['고가'] - today['저가']
+    today_body = abs(today_close - today_open)
+    is_doji    = today_rng > 0 and today_body / today_rng < 0.1
+    if today_close > today_open and not is_doji:
+        return None
+
+    # ② MA5/MA10/MA20 계산
+    ma5  = sum(d['종가'] for d in price_data[:5])  / 5
+    ma10 = sum(d['종가'] for d in price_data[:10]) / 10
+    ma20 = sum(d['종가'] for d in price_data[:20]) / 20
+
+    # ③ 현재가가 MA 중 하나 ±15% 이내
+    GJ_MA_NEAR = 15.0
+    ma5_gap  = (today_close - ma5)  / ma5  * 100
+    ma10_gap = (today_close - ma10) / ma10 * 100
+    ma20_gap = (today_close - ma20) / ma20 * 100
+    near_ma5  = abs(ma5_gap)  <= GJ_MA_NEAR
+    near_ma10 = abs(ma10_gap) <= GJ_MA_NEAR
+    near_ma20 = abs(ma20_gap) <= GJ_MA_NEAR
+    if not (near_ma5 or near_ma10 or near_ma20):
+        return None
+
+    # ④ 기준봉 탐색: 어제(1일 전)~7일 전
+    GJ_MAX_SIDEWAY = 7
+    yangbong_idx = None
+    for i in range(1, min(GJ_MAX_SIDEWAY + 1, len(price_data))):
+        d    = price_data[i]
+        rate = d.get('등락률', 0)
+        if not (YANGUMYANG_MIN_RISE <= rate <= YANGUMYANG_MAX_RISE):
+            continue
+        if d['종가'] <= d['시가']:   # 음봉 제외
+            continue
+        prev_vols = [price_data[j]['거래량'] for j in range(i + 1, min(i + 6, len(price_data)))]
+        avg_prev  = sum(prev_vols) / len(prev_vols) if prev_vols else 0
+        if avg_prev > 0 and d['거래량'] >= avg_prev * 1.5:
+            yangbong_idx = i
+            break
+
+    if yangbong_idx is None:
+        return None
+
+    yangbong_day   = price_data[yangbong_idx]
+    yangbong_vol   = yangbong_day['거래량']
+    yangbong_close = yangbong_day['종가']
+
+    # ⑤ 오늘 거래량이 기준봉의 70% 이하
+    GJ_VOL_RATIO = 0.70
+    vol_ratio = today['거래량'] / yangbong_vol if yangbong_vol > 0 else 1.0
+    if vol_ratio > GJ_VOL_RATIO:
+        return None
+
+    # ⑥ 기준봉 종가 대비 현재가 -20% 이내
+    GJ_MAX_DROP = -20.0
+    drop_pct = (today_close - yangbong_close) / yangbong_close * 100
+    if drop_pct < GJ_MAX_DROP:
+        return None
+
+    # ⑦ 거래대금 필터 (기준봉 거래량 × 오늘 현재가)
+    if yangbong_vol * today_close < YANGUMYANG_MIN_TRADE:
+        return None
+
+    # 복합 스코어: 거래량감소(40) + MA근접도(30) + 신선도(15) + 거래대금(15)
+    vol_score   = (1 - vol_ratio) * 40
+    best_ma_gap = min(abs(ma5_gap), abs(ma10_gap), abs(ma20_gap))
+    ma_score    = max(0, (GJ_MA_NEAR - best_ma_gap) / GJ_MA_NEAR) * 30
+    days_since  = yangbong_idx - 1   # 기준봉 이후 경과일 (어제 기준봉 = 0)
+    fresh_score = max(0, (GJ_MAX_SIDEWAY - days_since) / GJ_MAX_SIDEWAY) * 15
+    trade_score = min(15, math.log10(max(1, yangbong_vol * today_close / 1e7)) * 5)
+    score = round(vol_score + ma_score + fresh_score + trade_score, 1)
+
+    return {
+        '기준봉일':     yangbong_day['날짜'],
+        '기준봉등락률': round(yangbong_day.get('등락률', 0), 1),
+        '경과일':       days_since,
+        '거래량비율':   round(vol_ratio, 2),
+        '눌림폭':       round(drop_pct, 1),
+        'MA5':          round(ma5),
+        'MA5괴리율':    round(ma5_gap, 1),
+        'MA10':         round(ma10),
+        'MA10괴리율':   round(ma10_gap, 1),
+        'MA20':         round(ma20),
+        'MA20괴리율':   round(ma20_gap, 1),
+        'score':        score,
+        '패턴':         'GJ',
     }
 
 
@@ -529,8 +672,12 @@ def fetch_pullback_flow(market: str = '코스피') -> list[dict]:
         try:
             time.sleep(0.05)
             price_data = _fetch_daily_price(code)
-            # P1 먼저 체크, 없으면 P3 체크
-            pattern = _check_yangumyang(price_data) or _check_yangumyang_p3(price_data)
+            # P1 → P3 → GJ(gamejoa) 순서로 체크
+            pattern = (
+                _check_yangumyang(price_data)
+                or _check_yangumyang_p3(price_data)
+                or _check_yangumyang_gamejoa(price_data)
+            )
             if not pattern:
                 return None
             today = price_data[0]
@@ -553,8 +700,8 @@ def fetch_pullback_flow(market: str = '코스피') -> list[dict]:
             if r:
                 results.append(r)
 
-    # 전일 거래대금 높은 순
-    results.sort(key=lambda r: r.get('전일거래량', 0) * r.get('현재가', 0), reverse=True)
+    # 복합 스코어 높은 순
+    results.sort(key=lambda r: r.get('score', 0), reverse=True)
     logger.info(f"양음양 스캔 완료: {len(results)}개 해당")
     return results
 
@@ -692,10 +839,11 @@ def format_pullback_message(rows: list[dict], market: str) -> str:
 
     p1 = [r for r in rows if r.get('패턴') == 'P1'][:8]
     p3 = [r for r in rows if r.get('패턴') == 'P3'][:8]
+    gj = [r for r in rows if r.get('패턴') == 'GJ'][:8]
 
     lines = [
         f'📊 <b>{market} 양음양 눌림목</b>',
-        f'<i>{desc} · {len(rows)}개 (P1:{len(p1)} P3:{len(p3)} 각 최대8개)</i>',
+        f'<i>{desc} · {len(rows)}개 (P1:{len(p1)} P3:{len(p3)} GJ:{len(gj)} 각 최대8개)</i>',
     ]
 
     if p1:
@@ -724,6 +872,22 @@ def format_pullback_message(rows: list[dict], market: str) -> str:
             f'   {r["현재가"]:,}원 {_rate_str(r["등락률"])}\n'
             f'   장대양봉 <b>+{r["장대양봉등락률"]:.1f}%</b> ({r["장대양봉일"]}) → {r["횡보일수"]}일 횡보\n'
             f'   {ma_tag} {ma_gap:+.1f}%  ({r["MA5"]:,}원)  오늘거래량 {_vol(r["오늘거래량"])}'
+        )
+
+    if gj:
+        lines.append('\n<b>── GJ (종가매수 눌림) ──</b>')
+    for i, r in enumerate(gj, 1):
+        vol_pct = r['거래량비율'] * 100
+        # MA5/MA10/MA20 중 가장 가까운 이평선 표시
+        gaps = [('MA5', r['MA5괴리율']), ('MA10', r['MA10괴리율']), ('MA20', r['MA20괴리율'])]
+        ma_tag, ma_gap = min(gaps, key=lambda x: abs(x[1]))
+        ma_val = r['MA5'] if ma_tag == 'MA5' else r['MA10'] if ma_tag == 'MA10' else r['MA20']
+        days_lbl = '당일' if r['경과일'] == 0 else f'{r["경과일"]}일 전'
+        lines.append(
+            f'\n{i}. <b>{r["종목명"]}</b> <code>{r["코드"]}</code> <i>{_market_tag(r["코드"])}</i>\n'
+            f'   {r["현재가"]:,}원 {_rate_str(r["등락률"])}\n'
+            f'   기준봉 <b>+{r["기준봉등락률"]:.1f}%</b> ({r["기준봉일"]}, {days_lbl})  눌림 {r["눌림폭"]:+.1f}%\n'
+            f'   {ma_tag} {ma_gap:+.1f}%  ({ma_val:,}원)  거래량 {vol_pct:.0f}%'
         )
 
     return '\n'.join(lines)
