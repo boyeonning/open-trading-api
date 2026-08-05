@@ -37,13 +37,13 @@ INVESTOR_CODES = {
 
 # 양음양 기준
 YANGUMYANG_MIN_RISE  =  5.0   # 전일 장대양봉 최소 등락률
-YANGUMYANG_MAX_RISE  = 20.0   # 전일 장대양봉 최대 등락률 — PDF 기준 20% (초과 시 수익실현 물량 우려)
+YANGUMYANG_MAX_RISE  = 30.0   # 전일 장대양봉 최대 등락률 (상한 제거 — 30% 이상은 상폐 등 이상 급등)
 YANGUMYANG_VOL_RATIO =  0.6   # P1: 오늘 거래량이 전일의 이 비율 이하여야 함
 YANGUMYANG_VOL_RATIO_P3 = 0.85  # P3: 횡보 구간 최대 거래량 / 장대양봉 거래량 상한
 YANGUMYANG_BODY_RATIO = 0.4   # P1: 전일 양봉 몸통 비율 (고저 범위 대비)
 YANGUMYANG_MA5_GAP   = -5.0   # P1: MA5 대비 최대 이탈폭
 YANGUMYANG_MA5_GAP_P3 = -5.0   # P3: MA5 대비 최대 이탈폭
-YANGUMYANG_MA_NEAR_P3 = 10.0  # P3: MA 근접 기준 (±%)
+YANGUMYANG_MA_NEAR_P3 = 5.0   # P3: MA 근접 기준 (±%) — PDF: "5일선, 10일선에 붙었을 때 매수"
 YANGUMYANG_MAX_SIDEWAY = 5     # P3: 장대양봉 이후 최대 횡보 허용일수
 YANGUMYANG_MAX_DROP_P3 = -5.0  # P3: 장대양봉 종가 대비 현재가 최대 하락폭
 YANGUMYANG_MIN_TRADE = 2_000_000_000   # 전일 최소 거래대금 (20억) — 잡주 제외
@@ -252,11 +252,8 @@ def _check_yangumyang(price_data: list[dict]) -> Optional[dict]:
     if today_close <= 0 or today_open <= 0:
         return None
 
-    # ⑤ 오늘 음봉 또는 도지 (몸통이 전체 범위의 10% 이하)
-    today_rng  = today['고가'] - today['저가']
-    today_body = abs(today_close - today_open)
-    is_doji    = today_rng > 0 and today_body / today_rng < 0.1
-    if today_close > today_open and not is_doji:
+    # ⑤ 오늘 반드시 음봉 (종가 < 시가) — PDF 기준: 양봉 도지 불허
+    if today_close >= today_open:
         return None
 
     # ⑥ 오늘 거래량이 전일의 60% 이하 (핵심 조건)
@@ -361,20 +358,21 @@ def _check_yangumyang_p3(price_data: list[dict]) -> Optional[dict]:
     if max_since_vol > yangbong_vol * YANGUMYANG_VOL_RATIO_P3:
         return None
 
-    # 5일선 이탈 확인: 횡보 기간 중 종가가 MA5 -5% 이상 이탈하면 안 됨
+    # 단기 이평선 위에서 횡보 확인: 횡보 구간 모든 종가가 MA20 이상이어야 함
+    # PDF: "거래량을 계속 감소시키면서 단기 이평선 위에서 횡보하는 캔들"
     for d in since:
-        if d['종가'] < ma5 * (1 + YANGUMYANG_MA5_GAP_P3 / 100):
+        if d['종가'] < ma20:
             return None
 
-    # 오늘 현재가가 MA5, MA10, MA20 중 하나 ±10% 이내 (P3 전용 완화)
+    # 오늘 현재가가 MA5 또는 MA10 ±5% 이내 (PDF: "5일선, 10일선에 붙었을 때 매수")
+    # MA20은 제외 — 너무 먼 구간까지 허용하면 타이밍 기준이 없어짐
     ma5_gap  = (today['종가'] - ma5)  / ma5  * 100
     ma10_gap = (today['종가'] - ma10) / ma10 * 100
     ma20_gap = (today['종가'] - ma20) / ma20 * 100
     near_ma5  = abs(ma5_gap)  <= YANGUMYANG_MA_NEAR_P3
     near_ma10 = abs(ma10_gap) <= YANGUMYANG_MA_NEAR_P3
-    near_ma20 = abs(ma20_gap) <= YANGUMYANG_MA_NEAR_P3
 
-    if not (near_ma5 or near_ma10 or near_ma20):
+    if not (near_ma5 or near_ma10):
         return None
 
     yangbong_day = price_data[yangbong_idx]
@@ -400,7 +398,6 @@ def _check_yangumyang_p3(price_data: list[dict]) -> Optional[dict]:
         'MA20괴리율':     round(ma20_gap, 1),
         'MA5근처':        near_ma5,
         'MA10근처':       near_ma10,
-        'MA20근처':       near_ma20,
         '오늘거래량':     today['거래량'],
         'score':          score,
         '패턴':           'P3',
@@ -751,10 +748,8 @@ def format_pullback_message(rows: list[dict], market: str) -> str:
     for i, r in enumerate(p3, 1):
         if r.get('MA5근처'):
             ma_tag, ma_gap = 'MA5',  r['MA5괴리율']
-        elif r.get('MA10근처'):
-            ma_tag, ma_gap = 'MA10', r['MA10괴리율']
         else:
-            ma_tag, ma_gap = 'MA20', r.get('MA20괴리율', 0)
+            ma_tag, ma_gap = 'MA10', r['MA10괴리율']
         lines.append(
             f'\n{i}. <b>{r["종목명"]}</b> <code>{r["코드"]}</code> <i>{_market_tag(r["코드"])}</i>\n'
             f'   {r["현재가"]:,}원 {_rate_str(r["등락률"])}\n'
