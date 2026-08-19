@@ -190,16 +190,18 @@ def _check_one(ticker: str, vix: Optional[float]) -> Optional[dict]:
 
 # ── 메시지 포맷 ───────────────────────────────────────────────────────────────
 _GRADE_LABEL = {
-    'tier1_stable':   '1등급 안정형',
-    'tier1_volatile': '1등급 변동형',
-    'tier2':          '2등급 단일주',
-    'tier3':          '3등급 고위험',
+    'A': 'A등급 (−3%)',
+    'B': 'B등급 (−4%)',
+    'C': 'C등급 (−5%)',
+    'D': 'D등급 (−6%)',
+    'E': 'E등급 (−7%)',
 }
 _GRADE_EMOJI = {
-    'tier1_stable':   '🔵',
-    'tier1_volatile': '🟠',
-    'tier2':          '🟡',
-    'tier3':          '🔴',
+    'A': '🔵',
+    'B': '🟢',
+    'C': '🟡',
+    'D': '🟠',
+    'E': '🔴',
 }
 
 
