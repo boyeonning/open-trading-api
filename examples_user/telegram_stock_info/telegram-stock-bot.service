@@ -6,7 +6,7 @@ After=network.target
 Type=simple
 User=boyeon
 WorkingDirectory=/home/boyeon/workspace/open-trading-api/examples_user/telegram_stock_info
-Environment="TELEGRAM_BOT_TOKEN=your_telegram_bot_token_here"
+Environment="TELEGRAM_BOT_TOKEN=6315253245:AAEarXKEuPsDMJA8aRpcGMMoXkE9cyTlWmE
 ExecStart=/usr/bin/uv run bot.py
 Restart=always
 RestartSec=10

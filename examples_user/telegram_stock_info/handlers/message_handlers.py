@@ -17,7 +17,7 @@ from handlers.state import add_to_history, user_history
 logger = logging.getLogger(__name__)
 
 # 분석 모듈 선택적 임포트
-from analyzers.domestic import analyze_stock as analyze_domestic_stock
+from analyzers.domestic import analyze_stock as analyze_domestic_stock, search_stocks
 
 analyze_overseas_stock = None
 try:
@@ -60,7 +60,29 @@ async def analyze_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     is_etf = stock_input.upper().startswith('ETF:')
     is_overseas = ':' in stock_input and not is_etf
+    is_exact_code = stock_input.isdigit() and len(stock_input) == 6
     analysis_type = 'etf' if is_etf else ('overseas' if is_overseas else 'domestic')
+
+    # 국내 종목명 입력 시 후보 검색 — 여러 개면 버튼으로 먼저 보여줌
+    if not is_etf and not is_overseas and not is_exact_code and len(stock_input) >= 2:
+        candidates = search_stocks(stock_input, limit=8)
+        if len(candidates) > 1:
+            # 입력값과 완전히 일치하는 종목이 있으면 바로 분석
+            exact = [c for c in candidates if c['name'] == stock_input]
+            if not exact:
+                keyboard = [
+                    [InlineKeyboardButton(
+                        f"{c['name']} ({c['code']})",
+                        callback_data=f"stock:{c['code']}"
+                    )]
+                    for c in candidates
+                ]
+                await update.message.reply_text(
+                    f"🔍 <b>'{stock_input}'</b> 검색 결과\n\n종목을 선택하세요:",
+                    reply_markup=InlineKeyboardMarkup(keyboard),
+                    parse_mode='HTML'
+                )
+                return
 
     wait_msg = await update.message.reply_text(
         format_analyzing_message(stock_input, analysis_type)

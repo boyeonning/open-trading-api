@@ -7,6 +7,7 @@ Type=simple
 User=boyeon
 WorkingDirectory=/home/boyeon/workspace/open-trading-api/examples_user/leverage_bot
 Environment="LEVERAGE_BOT_TOKEN=your_token_here"
+Environment="ALERT_CHAT_ID=1174681843"
 ExecStart=/home/boyeon/.local/bin/uv run bot.py
 Restart=always
 RestartSec=10

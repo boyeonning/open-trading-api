@@ -23,6 +23,53 @@ logger = logging.getLogger(__name__)
 _stock_master_cache = {}
 
 
+def search_stocks(query: str, limit: int = 8) -> list[dict]:
+    """종목명/코드 부분 검색 — 자동완성 후보 반환
+
+    Returns:
+        list of {'name': str, 'code': str}
+    """
+    stocks_info_dir = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))),
+        'stocks_info'
+    )
+    files = [
+        os.path.join(stocks_info_dir, FILE_PATHS['kosdaq_master']),
+        os.path.join(stocks_info_dir, FILE_PATHS['kospi_master']),
+    ]
+
+    results = []
+    seen_codes = set()
+    q = query.strip().upper()
+
+    for file_path in files:
+        if not os.path.exists(file_path):
+            continue
+        if file_path not in _stock_master_cache:
+            try:
+                df = pd.read_csv(file_path, header=None,
+                                 names=['단축코드', '표준코드', '한글종목명'], encoding='utf-8')
+            except UnicodeDecodeError:
+                df = pd.read_csv(file_path, header=None,
+                                 names=['단축코드', '표준코드', '한글종목명'], encoding='cp949')
+            _stock_master_cache[file_path] = df
+
+        df = _stock_master_cache[file_path]
+        matched = df[
+            df['한글종목명'].str.upper().str.contains(q, na=False) |
+            df['단축코드'].str.contains(q, na=False)
+        ]
+        for _, row in matched.iterrows():
+            code = str(row['단축코드']).zfill(6)
+            if code not in seen_codes:
+                seen_codes.add(code)
+                results.append({'name': str(row['한글종목명']), 'code': code})
+            if len(results) >= limit:
+                return results
+
+    return results
+
+
 def get_stock_code(stock_name: str) -> tuple[str, str, list]:
     """종목명으로 종목코드 찾기
 
