@@ -741,12 +741,12 @@ def format_pullback_message(rows: list[dict], market: str) -> str:
     lines = [f'📊 <b>{market} 양음양</b>  <i>{len(p1)}개</i>']
 
     for i, r in enumerate(p1, 1):
-        vol_pct      = r['거래량비율'] * 100
-        support_gap  = r['장대양봉종가괴리율']
+        vol_pct     = r['거래량비율'] * 100
+        support_gap = r['장대양봉종가괴리율']
         lines.append(
             f'\n{i}. <b>{r["종목명"]}</b> <code>{r["코드"]}</code>\n'
-            f'   {r["현재가"]:,}원 {_rate_str(r["등락률"])}  |  전일 <b>+{r["전일등락률"]:.1f}%</b>\n'
-            f'   거래량 {_vol(r["전일거래량"])} → {_vol(r["오늘거래량"])} (<b>{vol_pct:.0f}%</b>)\n'
+            f'   전일 <b>+{r["전일등락률"]:.1f}%</b>\n'
+            f'   거래량 {_vol(r["전일거래량"])} → {_vol(r["오늘거래량"])} (<b>{vol_pct:.0f}%</b>) {_rate_str(r["등락률"])}\n'
             f'   지지선({r["장대양봉종가"]:,}원) {support_gap:+.1f}%  MA5 {r["MA5괴리율"]:+.1f}%'
         )
 
