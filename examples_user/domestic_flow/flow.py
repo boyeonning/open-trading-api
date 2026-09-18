@@ -716,13 +716,8 @@ def format_consecutive_message(rows: list[dict], days: int, market: str, investo
 
 
 def format_pullback_message(rows: list[dict], market: str) -> str:
-    desc = f'+{YANGUMYANG_MIN_RISE:.0f}~{YANGUMYANG_MAX_RISE:.0f}% 장대양봉 후 거래량↓ 눌림목 (MA5 기준)'
     if not rows:
-        return (
-            f'📊 <b>{market} 양음양 눌림목</b>\n\n'
-            '해당 종목 없음\n'
-            f'<i>{desc}</i>'
-        )
+        return f'📊 <b>{market} 양음양 눌림목</b>\n\n해당 종목 없음'
 
     def _vol(v):
         if v >= 10_000_000:
@@ -734,37 +729,15 @@ def format_pullback_message(rows: list[dict], market: str) -> str:
         return f'{v:,}주'
 
     p1 = [r for r in rows if r.get('패턴') == 'P1'][:15]
-    p3 = [r for r in rows if r.get('패턴') == 'P3'][:15]
 
-    lines = [
-        f'📊 <b>{market} 양음양 눌림목</b>',
-        f'<i>{desc} · {len(rows)}개 (P1:{len(p1)} P3:{len(p3)} 각 최대15개)</i>',
-    ]
+    lines = [f'📊 <b>{market} 양음양</b>  <i>{len(p1)}개</i>']
 
-    if p1:
-        lines.append('\n<b>── Pattern 1 (오늘 음봉 눌림) ──</b>')
     for i, r in enumerate(p1, 1):
-        ma5_gap  = r['MA5괴리율']
-        vol_pct  = r['거래량비율'] * 100
+        vol_pct = r['거래량비율'] * 100
         lines.append(
-            f'\n{i}. <b>{r["종목명"]}</b> <code>{r["코드"]}</code> <i>{_market_tag(r["코드"])}</i>\n'
-            f'   {r["현재가"]:,}원 {_rate_str(r["등락률"])}\n'
-            f'   전일 <b>+{r["전일등락률"]:.1f}%</b> 장대양봉  MA5 {ma5_gap:+.1f}%  ({r["MA5"]:,}원)\n'
-            f'   거래량 전일 {_vol(r["전일거래량"])} → 오늘 {_vol(r["오늘거래량"])} (<b>{vol_pct:.0f}%</b>)'
-        )
-
-    if p3:
-        lines.append('\n<b>── Pattern 3 (횡보 눌림) ──</b>')
-    for i, r in enumerate(p3, 1):
-        if r.get('MA5근처'):
-            ma_tag, ma_gap = 'MA5',  r['MA5괴리율']
-        else:
-            ma_tag, ma_gap = 'MA10', r['MA10괴리율']
-        lines.append(
-            f'\n{i}. <b>{r["종목명"]}</b> <code>{r["코드"]}</code> <i>{_market_tag(r["코드"])}</i>\n'
-            f'   {r["현재가"]:,}원 {_rate_str(r["등락률"])}\n'
-            f'   장대양봉 <b>+{r["장대양봉등락률"]:.1f}%</b> ({r["장대양봉일"]}) → {r["횡보일수"]}일 횡보\n'
-            f'   {ma_tag} {ma_gap:+.1f}%  ({r["MA5"]:,}원)  오늘거래량 {_vol(r["오늘거래량"])}'
+            f'\n{i}. <b>{r["종목명"]}</b> <code>{r["코드"]}</code>\n'
+            f'   {r["현재가"]:,}원 {_rate_str(r["등락률"])}  |  전일 <b>+{r["전일등락률"]:.1f}%</b>\n'
+            f'   거래량 {_vol(r["전일거래량"])} → {_vol(r["오늘거래량"])} (<b>{vol_pct:.0f}%</b>)  MA5 {r["MA5괴리율"]:+.1f}%'
         )
 
     return '\n'.join(lines)
