@@ -11,6 +11,7 @@ import os
 import logging
 import math
 import time
+import statistics
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Optional
@@ -36,7 +37,8 @@ INVESTOR_CODES = {
 }
 
 # 양음양 기준
-YANGUMYANG_MIN_RISE  =  5.0   # 전일 장대양봉 최소 등락률
+YANGUMYANG_MIN_RISE     =  5.0   # P3: 장대양봉 최소 등락률
+YANGUMYANG_MIN_RISE_P1  = 10.0   # P1: 장대양봉 최소 등락률 (10% 이상만)
 YANGUMYANG_MAX_RISE  = 30.0   # 전일 장대양봉 최대 등락률 (상한 제거 — 30% 이상은 상폐 등 이상 급등)
 YANGUMYANG_VOL_RATIO =  0.6   # P1: 오늘 거래량이 전일의 이 비율 이하여야 함
 YANGUMYANG_VOL_RATIO_P3 = 0.85  # P3: 횡보 구간 최대 거래량 / 장대양봉 거래량 상한
@@ -209,8 +211,8 @@ def _check_yangumyang(price_data: list[dict]) -> Optional[dict]:
       오늘: 음봉(종가<시가) + MA5 이탈 안함 + 거래량이 전일의 60% 이하
       현재가가 MA5 -5% 이내
     """
-    # MA5 계산을 위해 최소 6일치 필요 (오늘 + 전일 포함 5일)
-    if len(price_data) < 6:
+    # 오늘(1) + 어제(1) + 직전 20일치 필요
+    if len(price_data) < 22:
         return None
 
     today     = price_data[0]
@@ -228,9 +230,9 @@ def _check_yangumyang(price_data: list[dict]) -> Optional[dict]:
     if prev_trade_amount < YANGUMYANG_MIN_TRADE:
         return None
 
-    # ③ 전일 장대양봉: +5% ~ +20% + 양봉(종가>시가) + 몸통 50% 이상
+    # ③ 전일 장대양봉: +10% ~ +30% + 양봉(종가>시가) + 몸통 40% 이상
     prev_rate = yesterday.get('등락률', 0.0)
-    if not (YANGUMYANG_MIN_RISE <= prev_rate <= YANGUMYANG_MAX_RISE):
+    if not (YANGUMYANG_MIN_RISE_P1 <= prev_rate <= YANGUMYANG_MAX_RISE):
         return None
     if yesterday['종가'] <= yesterday['시가']:  # 음봉이면 제외
         return None
@@ -239,11 +241,12 @@ def _check_yangumyang(price_data: list[dict]) -> Optional[dict]:
     if prev_rng > 0 and prev_body / prev_rng < YANGUMYANG_BODY_RATIO:  # 몸통이 작으면 제외
         return None
 
-    # ④ 전일 대량거래: 전일 이전 5일(price_data[2:7]) 평균 거래량 대비 1.5배 이상
-    # [1:6]은 어제 자신이 포함되어 평균이 왜곡됨 → [2:7]로 어제 제외
-    prev_5d_vols = [d['거래량'] for d in price_data[2:7]]
-    avg_vol = sum(prev_5d_vols) / len(prev_5d_vols) if prev_5d_vols else 0
-    if avg_vol > 0 and yesterday['거래량'] < avg_vol * 1.5:
+    # ④ 전일 대량거래: 직전 20거래일 중앙값 대비 5배 이상
+    prev_20d_vols = [d['거래량'] for d in price_data[2:22]]
+    if len(prev_20d_vols) < 5:
+        return None
+    median_vol = statistics.median(prev_20d_vols)
+    if median_vol > 0 and yesterday['거래량'] < median_vol * 5:
         return None
 
     today_close = today['종가']
@@ -266,12 +269,17 @@ def _check_yangumyang(price_data: list[dict]) -> Optional[dict]:
     if ma5_gap_pct < YANGUMYANG_MA5_GAP:
         return None
 
-    # 복합 스코어: 거래량 감소폭(40) + MA5 근접도(20) + 거래대금(40)
+    # 복합 스코어: 거래량 감소폭(35) + MA5 근접도(15) + 거래대금(30) + 음봉몸통(20)
     prev_trade  = yesterday['종가'] * yesterday['거래량']
-    vol_score   = (1 - vol_ratio) * 40
-    ma5_score   = max(0, 5 - abs(ma5_gap_pct)) * 4
-    trade_score = min(40, math.log10(max(1, prev_trade / 1e7)) * 10)
-    score = round(vol_score + ma5_score + trade_score, 1)
+    vol_score   = (1 - vol_ratio) * 35
+    ma5_score   = max(0, 5 - abs(ma5_gap_pct)) * 3
+    trade_score = min(30, math.log10(max(1, prev_trade / 1e7)) * 7.5)
+    # 음봉 몸통이 작을수록 좋지만, 거래량이 많이 줄었다면 몸통 페널티 완화
+    today_rng  = today['고가'] - today['저가']
+    today_body = abs(today['종가'] - today['시가'])
+    body_ratio = today_body / today_rng if today_rng > 0 else 1.0
+    body_score = (1 - body_ratio) * 20 * (1 - vol_ratio)
+    score = round(vol_score + ma5_score + trade_score + body_score, 1)
 
     return {
         '전일등락률':  prev_rate,
@@ -296,7 +304,7 @@ def _check_yangumyang_p3(price_data: list[dict]) -> Optional[dict]:
 
     Pattern 1과 차이: 음봉 하루가 아니라 수일간 횡보 후 공략
     """
-    if len(price_data) < 21:
+    if len(price_data) < 30:  # 기준봉(최대 10일 전) + 직전 20일 필요
         return None
 
     today = price_data[0]
@@ -319,10 +327,12 @@ def _check_yangumyang_p3(price_data: list[dict]) -> Optional[dict]:
             continue
         if d['종가'] <= d['시가']:  # 음봉이면 제외
             continue
-        # 그 직전 5일 평균 거래량 대비 1.5배 이상
-        prev_vols = [price_data[j]['거래량'] for j in range(i+1, min(i+6, len(price_data)))]
-        avg_prev  = sum(prev_vols) / len(prev_vols) if prev_vols else 0
-        if avg_prev > 0 and d['거래량'] >= avg_prev * 1.5:
+        # 직전 20거래일 중앙값 대비 5배 이상
+        prev_vols = [price_data[j]['거래량'] for j in range(i+1, min(i+21, len(price_data)))]
+        if len(prev_vols) < 5:
+            continue
+        median_prev = statistics.median(prev_vols)
+        if median_prev > 0 and d['거래량'] >= median_prev * 5:
             yangbong_idx = i
             break
 
@@ -563,7 +573,7 @@ def fetch_pullback_flow(market: str = '코스피') -> list[dict]:
             time.sleep(0.05)
             price_data = _fetch_daily_price(code)
             # P1 → P3 순서로 체크
-            pattern = _check_yangumyang(price_data) or _check_yangumyang_p3(price_data)
+            pattern = _check_yangumyang(price_data)
             if not pattern:
                 return None
             today = price_data[0]
@@ -723,12 +733,12 @@ def format_pullback_message(rows: list[dict], market: str) -> str:
             return f'{v/10_000:.0f}만주'
         return f'{v:,}주'
 
-    p1 = [r for r in rows if r.get('패턴') == 'P1'][:8]
-    p3 = [r for r in rows if r.get('패턴') == 'P3'][:8]
+    p1 = [r for r in rows if r.get('패턴') == 'P1'][:15]
+    p3 = [r for r in rows if r.get('패턴') == 'P3'][:15]
 
     lines = [
         f'📊 <b>{market} 양음양 눌림목</b>',
-        f'<i>{desc} · {len(rows)}개 (P1:{len(p1)} P3:{len(p3)} 각 최대8개)</i>',
+        f'<i>{desc} · {len(rows)}개 (P1:{len(p1)} P3:{len(p3)} 각 최대15개)</i>',
     ]
 
     if p1:
