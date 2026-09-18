@@ -44,7 +44,6 @@ YANGUMYANG_VOL_RATIO =  0.6   # P1: 오늘 거래량이 전일의 이 비율 이
 YANGUMYANG_VOL_RATIO_P3 = 0.85  # P3: 횡보 구간 최대 거래량 / 장대양봉 거래량 상한
 YANGUMYANG_BODY_RATIO = 0.4   # P1: 전일 양봉 몸통 비율 (고저 범위 대비)
 YANGUMYANG_MA5_GAP   = -5.0   # P1: MA5 대비 최대 이탈폭
-YANGUMYANG_MAX_DROP_P1 = -10.0  # P1: 장대양봉 종가 대비 현재가 최대 하락폭
 YANGUMYANG_MA5_GAP_P3 = -5.0   # P3: MA5 대비 최대 이탈폭
 YANGUMYANG_MA_NEAR_P3 = 5.0   # P3: MA 근접 기준 (±%) — PDF: "5일선, 10일선에 붙었을 때 매수"
 YANGUMYANG_MAX_SIDEWAY = 5     # P3: 장대양봉 이후 최대 횡보 허용일수
@@ -270,11 +269,6 @@ def _check_yangumyang(price_data: list[dict]) -> Optional[dict]:
     if ma5_gap_pct < YANGUMYANG_MA5_GAP:
         return None
 
-    # ⑧ 장대양봉 종가 대비 현재가 하락폭 -10% 이내 (지지선 붕괴 제외)
-    yangbong_gap_pct = (today_close - yesterday['종가']) / yesterday['종가'] * 100
-    if yangbong_gap_pct < YANGUMYANG_MAX_DROP_P1:
-        return None
-
     # 복합 스코어: 거래량 감소폭(35) + MA5 근접도(15) + 거래대금(30) + 음봉몸통(20)
     prev_trade  = yesterday['종가'] * yesterday['거래량']
     vol_score   = (1 - vol_ratio) * 35
@@ -288,16 +282,14 @@ def _check_yangumyang(price_data: list[dict]) -> Optional[dict]:
     score = round(vol_score + ma5_score + trade_score + body_score, 1)
 
     return {
-        '전일등락률':      prev_rate,
-        'MA5':             round(ma5),
-        'MA5괴리율':       ma5_gap_pct,
-        '장대양봉종가괴리율': yangbong_gap_pct,
-        '장대양봉종가':    yesterday['종가'],
-        '거래량비율':      vol_ratio,
-        '전일거래량':      yesterday['거래량'],
-        '오늘거래량':      today['거래량'],
-        '전일고가':        yesterday['고가'],
-        '전일저가':        yesterday['저가'],
+        '전일등락률':  prev_rate,
+        'MA5':         round(ma5),
+        'MA5괴리율':   ma5_gap_pct,
+        '거래량비율':  vol_ratio,
+        '전일거래량':  yesterday['거래량'],
+        '오늘거래량':  today['거래량'],
+        '전일고가':    yesterday['고가'],
+        '전일저가':    yesterday['저가'],
         'score':           score,
         '패턴':            'P1',
     }
@@ -741,13 +733,12 @@ def format_pullback_message(rows: list[dict], market: str) -> str:
     lines = [f'📊 <b>{market} 양음양</b>  <i>{len(p1)}개</i>']
 
     for i, r in enumerate(p1, 1):
-        vol_pct     = r['거래량비율'] * 100
-        support_gap = r['장대양봉종가괴리율']
+        vol_pct = r['거래량비율'] * 100
         lines.append(
             f'\n{i}. <b>{r["종목명"]}</b> <code>{r["코드"]}</code>\n'
             f'   전일 <b>+{r["전일등락률"]:.1f}%</b>\n'
             f'   거래량 {_vol(r["전일거래량"])} → {_vol(r["오늘거래량"])} (<b>{vol_pct:.0f}%</b>) {_rate_str(r["등락률"])}\n'
-            f'   지지선({r["장대양봉종가"]:,}원) {support_gap:+.1f}%  MA5 {r["MA5괴리율"]:+.1f}%'
+            f'   MA5 {r["MA5괴리율"]:+.1f}%'
         )
 
     return '\n'.join(lines)
